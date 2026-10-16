@@ -1,0 +1,231 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,100..900;1,100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,100;0,300;0,400;0,700;0,900;1,100;1,300;1,400;1,700;1,900&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #faf6ef;
+  --color-clay: #c56b4a;
+  --color-espresso: #3d2e24;
+  --color-sage: #7a8b6f;
+  --font-inter: "Inter", sans-serif;
+  --font-dmsans: "DM Sans", sans-serif;
+  --font-raleway: "Raleway", sans-serif;
+  --font-lato: "Lato", sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  font-family: "DM Sans";
+}
+
+.input-line {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: #c56b4a;
+  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: translateX(-50%);
+  border-radius: 2px;
+}
+.input-wrapper:focus-within .input-line {
+  width: 100%;
+}
+.input-wrapper:focus-within .input-icon {
+  color: #c56b4a;
+}
+
+/* Floating shapes on left panel */
+.float-shape {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+/* Tab slider pill */
+.tab-slider {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Password strength segments */
+.strength-segment {
+  transition: background 0.3s ease;
+}
+
+/* Custom checkbox */
+.custom-check {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #d1d5db;
+  border-radius: 4px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.custom-check:checked {
+  background: #c56b4a;
+  border-color: #c56b4a;
+}
+.custom-check:checked::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 5px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.custom-check:focus-visible {
+  outline: 2px solid #c56b4a;
+  outline-offset: 2px;
+}
+
+/* Social button hover */
+.social-btn {
+  transition: all 0.25s ease;
+}
+.social-btn:hover {
+  border-color: #c56b4a;
+  background: #c56b4a08;
+}
+
+/* Grid pattern on dark panel */
+.grid-pattern {
+  background-image:
+    linear-gradient(rgba(250, 246, 239, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(250, 246, 239, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Glow blobs */
+.glow-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  will-change: transform;
+}
+
+/* Error shake */
+@keyframes errorShake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+.error-shake {
+  animation: errorShake 0.5s ease;
+}
+
+/* Divider gradient line */
+.divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #d1d5db, transparent);
+}
+
+/* Used by horizontally scrollable rows (navbar city list, order tabs) so the
+   row can be swiped without showing a scrollbar. Referenced in markup but
+   never previously defined. */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* The seller sidebar nav, which scrolls on a short window.
+
+   The browser's default bar is a light grey slab with its own track, which on
+   the espresso sidebar reads as a pale stripe stuck to the edge rather than as
+   part of the panel. It is not hidden outright, the way the swipeable rows
+   above are: the nav really does run past the fold on a laptop, and a man who
+   cannot see that Settings is below it will not go looking.
+
+   So: no track, a thin thumb in the cream already used for the sidebar text,
+   barely there until the pointer is in the nav. */
+.nav-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(250 246 239 / 0.18) transparent;
+}
+.nav-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.nav-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nav-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(250 246 239 / 0.18);
+  border-radius: 9999px;
+}
+.nav-scrollbar:hover {
+  scrollbar-color: rgb(250 246 239 / 0.32) transparent;
+}
+.nav-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(250 246 239 / 0.32);
+}
+
+/* The same idea on a light ground: scrolling lists inside a white panel, such
+   as the notification dropdown. A default bar reads as a grey stripe glued to
+   the inside of a rounded card, and there is no room in a 384px panel to spend
+   17px of it on chrome. */
+.panel-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(61 46 36 / 0.18) transparent;
+}
+.panel-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.panel-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.panel-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(61 46 36 / 0.18);
+  border-radius: 9999px;
+}
+.panel-scrollbar:hover {
+  scrollbar-color: rgb(61 46 36 / 0.32) transparent;
+}
+.panel-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgb(61 46 36 / 0.32);
+}
+
+/**
+ * THE PAGE MUST NOT JUMP WHEN THE SCROLLBAR APPEARS.
+ *
+ * A short screen has no scrollbar, a long one does, and on a desktop browser
+ * that bar takes real width out of the viewport. Navigating between the two
+ * shifted the whole layout sideways by about 15px and shifted it back, which
+ * reads as the site flinching.
+ *
+ * `scrollbar-gutter: stable` is the modern answer: the space is reserved
+ * whether or not the bar is drawn, so nothing moves. It replaces the old
+ * trick of forcing `overflow-y: scroll` on every page, which left a dead grey
+ * bar on screens that did not need one.
+ *
+ * On the ROOT element, not on body, because that is where the browser puts
+ * the viewport scrollbar.
+ */
+html {
+  scrollbar-gutter: stable;
+}
