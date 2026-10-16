@@ -33,13 +33,13 @@
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/RonakDutta/wholesale-product.git"
+		"url": "git+https://github.com/chitransh-usar/wholesale-product.git"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
 	"bugs": {
-		"url": "https://github.com/RonakDutta/wholesale-product/issues"
+		"url": "https://github.com/chitransh-usar/wholesale-product/issues"
 	},
-	"homepage": "https://github.com/RonakDutta/wholesale-product#readme"
+	"homepage": "https://github.com/chitransh-usar/wholesale-product#readme"
 }
