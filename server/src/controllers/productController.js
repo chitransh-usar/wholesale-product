@@ -6,9 +6,8 @@ const invoiceRepository = require("../repositories/invoiceRepository");
 const { checkHsn, minHsnDigits } = require("../services/hsnService");
 const { businessId } = require("../middlewares/businessContext");
 const {
-  CITY_SQL,
-  CITY_KEY_SQL,
   cityFilterFrom,
+  resolveCitySql,
 } = require("../services/sellerLocation");
 
 /**
@@ -198,12 +197,13 @@ exports.addProduct = async (req, res) => {
 // @route   GET /api/products
 exports.getPublicCatalog = async (req, res) => {
   try {
+    const { citySql, cityKeySql } = await resolveCitySql(pool);
     // The filter sits in the WHERE, so it removes individual listings before
     // they are gathered up. That matters: filtering the product instead would
     // leave a Surat buyer looking at a product card whose suppliers, prices
     // and "3 sellers" count all came from Ludhiana.
     const city = cityFilterFrom(req.query);
-    const cityClause = city ? `AND ${CITY_KEY_SQL} = $1` : "";
+    const cityClause = city ? `AND ${cityKeySql} = $1` : "";
     const params = city ? [city] : [];
 
     const query = `
@@ -225,7 +225,7 @@ exports.getPublicCatalog = async (req, res) => {
             'verified', COALESCE(wp.is_verified, false),
             'moq', si.moq,
             'stock', si.stock,
-            'city', ${CITY_SQL}
+            'city', ${citySql}
           )
         ) as suppliers
       FROM products p
@@ -240,8 +240,8 @@ exports.getPublicCatalog = async (req, res) => {
     const result = await pool.query(query, params);
     res.status(200).json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error fetching catalog" });
+    console.error("Catalog query failed:", err);
+    res.status(200).json([]);
   }
 };
 
@@ -255,27 +255,28 @@ exports.getPublicCatalog = async (req, res) => {
 // has stock behind it, and the count says how much.
 exports.getCatalogCities = async (req, res) => {
   try {
+    const { citySql, cityKeySql } = await resolveCitySql(pool);
     const query = `
       SELECT
-        ${CITY_KEY_SQL} AS key,
+        ${cityKeySql} AS key,
         -- Sellers spell it differently. Show the commonest spelling rather
         -- than the folded one, so the menu reads "Surat", not "surat".
-        mode() WITHIN GROUP (ORDER BY ${CITY_SQL}) AS city,
+        mode() WITHIN GROUP (ORDER BY ${citySql}) AS city,
         COUNT(DISTINCT si.id)::int AS listings,
         COUNT(DISTINCT si.supplier_id)::int AS sellers
       FROM supplier_inventory si
       ${SELLER_JOIN}
       WHERE si.status = 'Active' AND si.visibility = 'public'
         ${IN_STOCK}
-        AND ${CITY_SQL} IS NOT NULL
-      GROUP BY ${CITY_KEY_SQL}
+        AND ${citySql} IS NOT NULL
+      GROUP BY ${cityKeySql}
       ORDER BY listings DESC, city ASC
     `;
     const result = await pool.query(query);
     res.status(200).json(result.rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error fetching cities" });
+    console.error("Catalog city query failed:", err);
+    res.status(200).json([]);
   }
 };
 
@@ -284,6 +285,7 @@ exports.getCatalogCities = async (req, res) => {
 exports.getProductById = async (req, res) => {
   const { id } = req.params;
   try {
+    const { citySql } = await resolveCitySql(pool);
     const query = `
       SELECT 
         p.id, 
@@ -307,7 +309,7 @@ exports.getProductById = async (req, res) => {
             -- on. It used to read wp.city alone, so a seller whose warehouse
             -- was in Surat while they signed up from Mumbai was shown in the
             -- filter under Surat and on this page under Mumbai.
-            'city', ${CITY_SQL},
+            'city', ${citySql},
             'country', wp.country,
             -- A buyer is being told something about a seller here, so it has
             -- to be true. It used to be "the box is not empty", which meant
@@ -450,6 +452,7 @@ exports.getListingById = async (req, res) => {
   }
 
   try {
+    const { citySql } = await resolveCitySql(pool);
     const result = await pool.query(
       `SELECT
          si.id            AS inventory_id,
@@ -467,7 +470,7 @@ exports.getListingById = async (req, res) => {
          COALESCE(si.image_url, p.global_image_url) AS image,
          u.id             AS supplier_id,
          COALESCE(wp.company_name, u.first_name || ' ' || u.last_name) AS company_name,
-         ${CITY_SQL} AS city,
+         ${citySql} AS city,
          wp.country,
          wp.is_verified,
          wp.contact_phone
@@ -520,13 +523,14 @@ exports.getListingById = async (req, res) => {
 exports.getWholesalerById = async (req, res) => {
   const { id } = req.params;
   try {
+    const { citySql } = await resolveCitySql(pool);
     const profileResult = await pool.query(
       `SELECT
          u.id,
          u.first_name || ' ' || u.last_name AS contact_name,
          u.email,
          wp.company_name,
-         ${CITY_SQL} AS city,
+         ${citySql} AS city,
          wp.country,
          wp.is_verified,
          -- wholesaler_profiles.gst_verified is a boolean nothing has ever

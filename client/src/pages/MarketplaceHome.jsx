@@ -44,7 +44,8 @@ const MarketplaceHome = () => {
           params: cityParam ? { city: cityParam } : {},
         });
 
-        const mappedProducts = res.data.map((dbProduct) => ({
+        const catalog = Array.isArray(res.data) ? res.data : [];
+        const mappedProducts = catalog.map((dbProduct) => ({
           id: dbProduct.id.toString(),
           name: dbProduct.name,
           category: dbProduct.category,

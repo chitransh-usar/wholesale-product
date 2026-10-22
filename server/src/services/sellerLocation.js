@@ -21,13 +21,47 @@
  */
 
 // The city a listing ships from, in its original spelling.
-const CITY_SQL = `COALESCE(
-  NULLIF(btrim(wp.warehouse_city), ''),
-  NULLIF(btrim(wp.city), '')
-)`;
+// Some databases are older and do not have warehouse_city yet, so build the
+// expression at runtime based on the schema rather than assuming every
+// migration has been applied.
+const citySqlFor = ({ hasWarehouseCity = true, hasLegacyCity = true } = {}) => {
+  if (!hasWarehouseCity && !hasLegacyCity) return "NULL";
+  if (hasWarehouseCity) {
+    return `COALESCE(
+      NULLIF(btrim(wp.warehouse_city), ''),
+      NULLIF(btrim(wp.city), '')
+    )`;
+  }
+  return `NULLIF(btrim(wp.city), '')`;
+};
+
+const cityKeySqlFor = (citySql) => `lower(regexp_replace(btrim(${citySql}), '\\s+', ' ', 'g'))`;
+
+const CITY_SQL = citySqlFor({ hasWarehouseCity: true, hasLegacyCity: true });
 
 // The same, folded so two spellings of one city compare equal.
-const CITY_KEY_SQL = `lower(regexp_replace(btrim(${CITY_SQL}), '\\s+', ' ', 'g'))`;
+const CITY_KEY_SQL = cityKeySqlFor(CITY_SQL);
+
+const resolveCitySql = async (dbPool) => {
+  const result = await dbPool.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'wholesaler_profiles'
+      AND column_name IN ('warehouse_city', 'city')
+  `);
+  const columns = new Set(result.rows.map((row) => row.column_name));
+  const hasWarehouseCity = columns.has('warehouse_city');
+  const hasLegacyCity = columns.has('city');
+  const citySql = citySqlFor({ hasWarehouseCity, hasLegacyCity });
+
+  return {
+    citySql,
+    cityKeySql: cityKeySqlFor(citySql),
+    hasWarehouseCity,
+    hasLegacyCity,
+  };
+};
 
 /**
  * The JS half of CITY_KEY_SQL. These two must agree: a buyer's chosen city
@@ -52,4 +86,12 @@ const cityFilterFrom = (query = {}) => {
   return key;
 };
 
-module.exports = { CITY_SQL, CITY_KEY_SQL, cityKey, cityFilterFrom };
+module.exports = {
+  CITY_SQL,
+  CITY_KEY_SQL,
+  citySqlFor,
+  cityKeySqlFor,
+  resolveCitySql,
+  cityKey,
+  cityFilterFrom,
+};

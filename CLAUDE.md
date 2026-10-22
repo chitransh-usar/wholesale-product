@@ -71,14 +71,21 @@ build the schema, and drive the actual controller with a fake `req`/`res`.
 const Module = require("module");
 const { Pool } = require("pg");
 const dbPath = require.resolve("./src/config/db");
-const testPool = new Pool({ connectionString: "postgres://postgres@127.0.0.1:5433/test" });
+const testPool = new Pool({
+  connectionString: "postgres://postgres@127.0.0.1:5433/test",
+});
 const stub = new Module(dbPath, null);
-stub.exports = testPool; stub.loaded = true;
+stub.exports = testPool;
+stub.loaded = true;
 require.cache[dbPath] = stub;
 
 const ctrl = require("./src/controllers/orderController");
-const makeRes = () => { const r = { statusCode: 200, body: null };
-  r.status = c => (r.statusCode = c, r); r.json = b => (r.body = b, r); return r; };
+const makeRes = () => {
+  const r = { statusCode: 200, body: null };
+  r.status = (c) => ((r.statusCode = c), r);
+  r.json = (b) => ((r.body = b), r);
+  return r;
+};
 ```
 
 Postgres cannot run as root and the unix socket path has a 107 byte limit, so

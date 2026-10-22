@@ -4,6 +4,10 @@ node_modules/
 # env
 .env
 .env.*
+!.env.example
+
+server/.env
+client/.env
 
 # logs
 *.log
@@ -25,3 +29,15 @@ Thumbs.db
 # generated invoice PDFs and other runtime uploads
 server/uploads/
 server/storage/
+
+# Local database backups and private key material
+*.dump
+*.backup
+*.bak
+*.sql.gz
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+*.pfx

@@ -3,8 +3,8 @@
 -- Run each section in the Neon SQL Editor and share the output.
 -- Section 1 alone answers most questions; 2-4 cover relations and rules.
 -- =====================================================
-
 -- 1) Every table with its columns, types, nullability and defaults
+
 SELECT
   c.table_name,
   c.ordinal_position AS pos,
