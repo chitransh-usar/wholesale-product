@@ -6,9 +6,12 @@ node_modules/
 .env.*
 !.env.example
 
+<<<<<<< HEAD
 server/.env
 client/.env
 
+=======
+>>>>>>> origin/main
 # logs
 *.log
 
