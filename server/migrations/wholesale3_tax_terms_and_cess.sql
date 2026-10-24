@@ -17,18 +17,15 @@
 -- cent cess is thirty per cent of the taxable value, not eighteen split three
 -- ways. That is the single most important sentence in this file.
 --
--- THE TWELVE PER CENT IS A TEST DEFAULT AND MUST NOT SHIP
+-- CESS MUST NOT BE GUESSED
 --
 -- Real cess is commodity specific. Twelve per cent on some goods, sixty on
 -- others, a flat four hundred rupees a tonne on coal, and nothing at all on
--- the great majority of what a cloth wholesaler sells. A blanket twelve per
--- cent on a live bill is a wrong number on a legal document, which is the one
--- thing this codebase has a standing rule against.
+-- the great majority of what a cloth wholesaler sells. A sample twelve per
+-- cent term must not be seeded into a live tax list.
 --
--- It is seeded on here because it was asked for so the arithmetic can be
--- tested end to end. Before this goes anywhere near a real customer, set the
--- cess on GST18 back to zero on the Administration screen, or delete the
--- GST18_CESS12 term.
+-- Wholesalers can add a verified term after confirming the rate for their
+-- goods. This migration seeds no nonzero cess rate.
 --
 -- Run by hand against Neon, like every other file in this directory.
 
@@ -59,8 +56,7 @@ INSERT INTO master_tax_terms (code, label, igst_percent, cess_percent, sort_orde
   ('GST5',    'GST 5%',           5.00,  0.00, 40),
   ('GST12',   'GST 12%',         12.00,  0.00, 50),
   ('GST18',   'GST 18%',         18.00,  0.00, 60),
-  ('GST28',   'GST 28%',         28.00,  0.00, 70),
-  ('GST28_CESS12', 'GST 28% plus cess 12%', 28.00, 12.00, 80)
+  ('GST28',   'GST 28%',         28.00,  0.00, 70)
 ON CONFLICT (code) DO NOTHING;
 
 -- The cess rate a sale line was billed at, snapshot onto the line like the GST

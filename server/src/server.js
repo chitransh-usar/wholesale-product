@@ -3,15 +3,16 @@ const { createServer } = require("http");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const pool = require("./config/db");
+const corsOrigin = require("./config/corsOrigin");
+const validateRuntimeConfig = require("./config/runtimeConfig");
+const registerGracefulShutdown = require("./services/gracefulShutdown");
 const { setSocketServer } = require("./services/socketService");
 
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    // Restrict to CLIENT_URL when configured; otherwise reflect the request
-    // origin so the browser socket handshake isn't blocked in local dev.
-    origin: process.env.CLIENT_URL || true,
+    origin: corsOrigin,
     credentials: true,
   },
 });
@@ -78,35 +79,9 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = Number(process.env.PORT) || 5000;
-
-/**
- * Said once at boot, so a misconfigured deployment is visible in the logs
- * before anybody tries to sign in and gets a 401 they cannot explain.
- *
- * JWT_EXPIRES_IN is checked because a bare number means SECONDS to
- * jsonwebtoken. Somebody setting it to 1 meaning "one day" issues tokens that
- * die a second after they are handed out, and every request after a
- * successful sign in comes back 401. That looks exactly like a broken login
- * and is nothing of the kind.
- */
-const checkAuthConfig = () => {
-  if (!process.env.JWT_SECRET) {
-    console.error(
-      "JWT_SECRET is not set. Signing in will fail and no token can be verified.",
-    );
-    return;
-  }
-  const expiry = process.env.JWT_EXPIRES_IN;
-  if (expiry && /^\d+$/.test(String(expiry).trim())) {
-    const seconds = Number(expiry);
-    console.warn(
-      `JWT_EXPIRES_IN is "${expiry}", which jsonwebtoken reads as ${seconds} SECONDS, not days. Write "30d" if you meant days.`,
-    );
-  }
-};
+const PORT = validateRuntimeConfig(process.env);
+registerGracefulShutdown({ io, pool });
 
 httpServer.listen(PORT, () => {
-  checkAuthConfig();
   console.log(`Server running on port ${PORT} with Enterprise Invoice System initialized`);
 });

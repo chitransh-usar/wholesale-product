@@ -5,13 +5,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+.env.test
 
-<<<<<<< HEAD
-server/.env
-client/.env
-
-=======
->>>>>>> origin/main
 # logs
 *.log
 
@@ -35,12 +30,19 @@ server/storage/
 
 # Local database backups and private key material
 *.dump
+*.pgdump
 *.backup
 *.bak
 *.sql.gz
+*.sql.backup
+*.backup.sql
+*.dump.sql
 *.sqlite
 *.sqlite3
 *.pem
 *.key
 *.p12
 *.pfx
+*.der
+*.p8
+*.jks

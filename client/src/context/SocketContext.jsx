@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "./AuthContext";
+import apiBaseUrl from "../utils/apiBaseUrl";
 
 const SocketContext = createContext(null);
 
@@ -19,13 +20,10 @@ export const SocketProvider = ({ children }) => {
 			return;
 		}
 
-		const newSocket = io(
-			import.meta.env.VITE_API_BASE_URL || "http://localhost:5000",
-			{
-				auth: { token },
-				withCredentials: true,
-			},
-		);
+		const newSocket = io(apiBaseUrl, {
+			auth: { token },
+			withCredentials: true,
+		});
 
 		newSocket.on("connect_error", (err) => {
 			console.error("Socket connection failed:", err.message);

@@ -11,6 +11,88 @@ Newest first. Dates are when the work landed on `claude/wholesale-3.0`.
 
 ---
 
+## Deployment readiness, local review
+
+The following is the current local deployment-preparation state. The older
+hand-run migration notes below describe previous development database work;
+they do not establish what is present in the new Neon database.
+
+- The migration runner has an explicit 57-file order and 7 explicit
+  exclusions. Plan mode prints the full list and does not load the database
+  module. `--apply` is required to request database changes.
+- All 57 included migrations were applied to the explicitly configured local
+  `wholesale_marketplace_test` PostgreSQL 18.6 database on 23 Oct 2026. No
+  remote database was contacted.
+- A full read-only catalog audit on 23 Oct 2026 confirmed the local target as
+  `wholesale_marketplace_test` at `127.0.0.1:5432` with
+  `transaction_read_only=on`. It found 78 public tables, 28 sequences, 244
+  indexes, and 982 columns. There were no views, materialized views,
+  partitioned tables, or foreign tables.
+- Static extraction found 77 unique table declarations across the included
+  migrations, all present in the local schema. The additional table is
+  `schema_migrations`. All 98 foreign keys were validated. There were 76
+  primary keys, 19 unique constraints, and 76 CHECK constraints.
+- `sales_channel_check` and `invoices_channel_check` are intentionally
+  `NOT VALID`, as specified by `wholesale3_marketplace_linkages.sql`. The
+  `sales` and `invoices` tables currently have zero rows. All 244 indexes are
+  valid and ready, with no exact duplicate definitions. All seven user
+  triggers are enabled and match the migration declarations. Six
+  application-owned functions match their declarations. The 28 sequences are
+  owned by their table columns except `order_number_seq`, which is consumed by
+  `generate_order_number()`.
+- The migration ledger has exactly 57 ordered entries with matching
+  checksums, the expected three columns, and a validated primary key on
+  `filename`. `pgcrypto` version 1.4 is installed locally. The full catalog
+  query retrieved all column types, nullability, defaults, identity, and
+  generated-column metadata, but did not produce a complete normalized
+  column-by-column diff against every migration statement.
+- All server tests pass 33/33, including migration-runner, startup
+  configuration, CORS, and graceful-shutdown tests. JavaScript syntax checks,
+  migration plan mode, and `git diff --check` passed.
+- The history-table check validates the exact columns, nullability, timestamp
+  default, identity/generated attributes, and a single validated,
+  non-deferrable primary key on `filename`. Migration history must be an exact
+  prefix of the manifest with current checksums. PostgreSQL 18's `NOT NULL`
+  catalog entries are validated through column nullability rather than treated
+  as extra table constraints.
+- The local runner is restricted to `server/.env.test`,
+  `wholesale_marketplace_test`, and port 5432. It is not approved or
+  configured for production Neon.
+- Production migrations and deployment are not approved. Rotation of
+  previously shared database/JWT credentials remains unverified.
+- Tracked review-image paths and the blueprint PDF still need an owner/public
+  visibility decision. A historical invoice PDF remains in Git history;
+  history cleanup was not performed.
+- Persistent backend storage for review images and invoice PDF cache files is
+  not configured. Choose and test a persistent volume or object-storage
+  implementation before production use.
+- `align_schema_with_app.sql` has a stale header describing the older UUID
+  repair dependency. The fresh baseline already defines the target references
+  as UUID, so `fix_uuid_column_types.sql` remains excluded from the fresh
+  plan. The baseline plus full included migration sequence completed locally.
+- Neon `pgcrypto` availability and migration-role permissions remain
+  unverified. The local PostgreSQL role had sufficient permissions and
+  installed the extension.
+- On this Windows PowerShell setup, `npm` resolves to an `npm.ps1` shim that
+  drops arguments after `--`. Use `npm.cmd run migrate -- --plan` or
+  `npm.cmd run migrate -- --apply`. The runner itself rejects invalid
+  arguments when they are passed through.
+- Production Vite builds now reject a missing or unsafe `VITE_API_BASE_URL`.
+  It must be an HTTPS backend origin without credentials or a path, and cannot
+  point to a loopback address. Development retains its localhost fallback.
+  A production build with a staging placeholder passed and its output
+  contained no `http://localhost:5000` URL.
+- Backend startup now fails before listening if `JWT_SECRET` is empty or
+  `PORT` is invalid. Production startup also requires a configured `CLIENT_URL`.
+  SIGTERM and SIGINT close Socket.IO and the PostgreSQL pool. These paths have
+  mocked regression tests and have not been exercised against a running host.
+- The targeted lint check for the new frontend API configuration passed. The
+  full frontend lint still reports 40 errors and 5 warnings elsewhere in the
+  project, including existing React hook/refresh findings in
+  `SocketContext.jsx`. Offline `npm audit` checks for root, server, and client
+  each reported zero known vulnerabilities from the local advisory cache; its
+  freshness was not verified.
+
 ## Needs running by hand
 
 Migrations are not automatic. Nothing applies them on boot, so a feature can
@@ -19,6 +101,11 @@ be finished in code and still broken in production.
 ```bash
 cd server && npm run migrate
 ```
+
+In this checkout the command defaults to plan-only. On Windows PowerShell use
+`npm.cmd run migrate -- --plan` or `npm.cmd run migrate -- --apply`; the
+PowerShell `npm.ps1` shim was observed dropping arguments after `--`. Apply is
+restricted to the validated local test target in `server/.env.test`.
 
 | Migration | What it does | Run? |
 |---|---|---|
@@ -3270,15 +3357,6 @@ found on 11 Sept had a passing suite standing next to them, because the suite
 asked `orderStatusService` and the button asks `PATCH /orders/:id/status`.
 
 ```bash
-# once
-su postgres -c "initdb -D /var/tmp/pgt/data"        # see CLAUDE.md for why
-createdb qa0
-
-# src/config/db.js hardcodes ssl, which a local server does not offer, and the
-# connection string is the one place that overrides it. Without sslmode=disable
-# the run stops at "The server does not support SSL connections".
-DATABASE_URL="postgres://postgres@127.0.0.1:5433/qa0?sslmode=disable" npm run migrate
-
 # each suite takes a database name
 node scripts/overview_check.js qa_overview
 ```
@@ -3286,6 +3364,46 @@ node scripts/overview_check.js qa_overview
 Build every database from the migrations, never by hand. Two real bugs were
 found the week the hand built stub was replaced, both of them constraints the
 stub did not have.
+
+The migration runner in this checkout now uses a reviewed explicit manifest
+and always loads only `server/.env.test` for apply mode. It rejects any
+configured or actual target except local `wholesale_marketplace_test` on port
+5432. Do not use the old `DATABASE_URL=... npm run migrate -- --apply` examples
+with this runner.
+
+## Neon deployment audit
+
+`DEPLOYMENT.md` records the reviewed fresh-database migration order, exclusions,
+backend/frontend hosting configuration, and smoke-test steps. The migration
+runner now defaults to plan-only, requires `--apply` to connect, takes an
+advisory lock, records checksums, and refuses to apply the baseline when public
+schema objects exist beyond the runner's exact migration-history table/index.
+It validates migration history as a checksum-verified contiguous manifest
+prefix and rejects unknown IDs, duplicates, invalid or changed checksums, and
+gaps. Failed or uncertain advisory-lock cleanup destroys the client connection
+and still closes the pool.
+
+The test-only `GST28_CESS12` term was removed from the fresh-database seed so
+production does not start with an unverified nonzero cess value. Existing
+database rows are not changed by editing this migration.
+
+A focused review confirmed an invoice PDF was committed and later deleted, but
+it remains in Git history. Its text indicates invoice/tax, financial,
+business/customer, and contact/personal information. No credential-bearing
+commit could be identified confidently in the available local history, and
+rotation of the previously shared database and JWT credentials is unverified.
+Two review images also remain tracked despite the uploads ignore rule. Do not
+rewrite Git history or apply migrations until the secret rotation, sensitive
+file exposure, PostgreSQL extension permissions, and target schema objects
+have been reviewed. The fresh baseline defines the reference columns used by
+`align_schema_with_app.sql` as UUID, so `fix_uuid_column_types.sql` is not a
+fresh-baseline prerequisite; its old-schema cleanup remains excluded.
+
+Mocked runner unit tests were added in `server/tests/runMigrations.test.js`.
+All 11 tests passed, including explicit plan-mode isolation and fail-safe
+advisory-lock cleanup. `.gitignore` now also covers common DER, P8, and JKS
+private-key formats; already tracked uploads were not removed. This review did
+not connect to any database, execute SQL, push, deploy, or rewrite history.
 
 For UI work, render it. A mock API on port 5000 plus `npx vite --port 5174`
 and Playwright at `/opt/pw-browsers/chromium`. Screenshotting has caught a

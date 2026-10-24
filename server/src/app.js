@@ -1,6 +1,9 @@
+require("dotenv").config();
+
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
+const pool = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const productRoutes = require("./routes/productRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
@@ -29,10 +32,28 @@ const dayBookRoutes = require("./routes/dayBookRoutes");
 const routeRoutes = require("./routes/routeRoutes");
 const webhookRoutes = require("./routes/webhookRoutes");
 const marketplaceAccountRoutes = require("./routes/marketplaceAccountRoutes");
+const corsOrigin = require("./config/corsOrigin");
 
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: corsOrigin, credentials: true }));
+
+app.get("/healthz", (_req, res) => {
+  res.status(200).json({ status: "ok" });
+});
+
+app.get("/readyz", async (_req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.status(200).json({ status: "ready" });
+  } catch (error) {
+    console.error(
+      "Database readiness check failed:",
+      error.code || error.name || "unknown error",
+    );
+    res.status(503).json({ status: "unavailable" });
+  }
+});
 
 /**
  * Webhooks are mounted BEFORE express.json, and the order is load bearing.
