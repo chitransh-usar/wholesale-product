@@ -9,6 +9,10 @@ const {
   cityFilterFrom,
   resolveCitySql,
 } = require("../services/sellerLocation");
+const {
+  databaseErrorStatus,
+  logDatabaseError,
+} = require("../utils/databaseError");
 
 /**
  * Hides a sold out listing from the catalogue, but only while stock counts
@@ -240,8 +244,10 @@ exports.getPublicCatalog = async (req, res) => {
     const result = await pool.query(query, params);
     res.status(200).json(result.rows);
   } catch (err) {
-    console.error("Catalog query failed:", err);
-    res.status(200).json([]);
+    logDatabaseError("Product catalogue query", err);
+    res
+      .status(databaseErrorStatus(err))
+      .json({ message: "Unable to load the product catalogue" });
   }
 };
 
@@ -275,8 +281,10 @@ exports.getCatalogCities = async (req, res) => {
     const result = await pool.query(query);
     res.status(200).json(result.rows);
   } catch (err) {
-    console.error("Catalog city query failed:", err);
-    res.status(200).json([]);
+    logDatabaseError("Product catalogue cities query", err);
+    res
+      .status(databaseErrorStatus(err))
+      .json({ message: "Unable to load catalogue cities" });
   }
 };
 

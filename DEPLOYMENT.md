@@ -97,9 +97,13 @@ database has the same schema or permissions.
 3. **Set the exact frontend origin.** Production Express CORS and Socket.IO
    now use the same `CLIENT_URL` allowlist. Set it to the Vercel origin, with
    comma-separated origins only if more than one is intentionally allowed.
-4. **Use verified TLS for PostgreSQL.** Remote database connections now require
-   certificate verification. Use Neon's `sslmode=verify-full` URL form or omit
-   `sslmode`; `sslmode=require` is rejected by this server configuration.
+4. **Use the correct PostgreSQL endpoint and TLS policy.** For Render's
+   internal database URL, the backend and database must be in compatible
+   regions. The server encrypts internal connections and accepts Render's
+   documented self-signed internal certificate only for Render internal
+   hostnames. For external database hosts, TLS certificate verification stays
+   enabled. Supply a trusted PEM with `DATABASE_SSL_CA` when the provider
+   requires a private CA. Do not set `sslmode=disable` for a remote database.
 5. **Review the tax seed.** The test-only `GST28_CESS12` seed was removed from
    the migration so a fresh production database does not start with an
    unverified nonzero cess rate. This source change does not alter a row that
@@ -505,7 +509,8 @@ Set secrets and server variables in the host dashboard, not in Vercel:
 
 | Variable | Required? | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Yes | Neon pooled PostgreSQL URL for the application. Keep it server-only and use verified TLS. The Node `pg.Pool` uses its default maximum of 10 connections per backend process, so account for this when scaling replicas. |
+| `DATABASE_URL` | Yes | PostgreSQL URL for the application. Keep it server-only. When using Render PostgreSQL, use its Internal Database URL only when the services are in compatible regions; otherwise use the provider's external URL and documented TLS settings. External hosts require verified TLS. The pool uses at most 10 connections per backend process. |
+| `DATABASE_SSL_CA` | Optional | Trusted PEM CA certificate for a provider that uses a private CA. Do not disable verification for external hosts. |
 | `JWT_SECRET` | Yes | Secret used to sign and verify sessions. Rotate the previously shared value. |
 | `CLIENT_URL` | Yes in production | Exact Vercel origin, or a comma-separated list of exact allowed origins. No paths or wildcard. |
 | `PORT` | Host supplied | The server reads this value and defaults to 5000 locally. |
@@ -524,6 +529,24 @@ The backend binds to the platform-provided port. Startup rejects a missing
 `CLIENT_URL`. `SIGTERM` and `SIGINT` close Socket.IO before ending the
 PostgreSQL pool. `/healthz` is a liveness check; `/readyz` returns a failure
 response when PostgreSQL is unavailable.
+
+The pool gives up after 5 seconds waiting for a connection, 8 seconds for a
+PostgreSQL statement, or 9 seconds for a client-side query deadline. Check
+`/readyz` before interpreting an empty catalogue response. A healthy
+`/healthz` only means the HTTP process is running.
+
+After deployment, verify these public GET endpoints without sending credentials:
+
+```powershell
+curl.exe -i https://<your-backend-origin>/healthz
+curl.exe -i https://<your-backend-origin>/readyz
+curl.exe -i https://<your-backend-origin>/api/products
+curl.exe -i https://<your-backend-origin>/api/products/cities
+```
+
+Both catalogue endpoints should return JSON arrays when ready. An empty array
+is valid only after `/readyz` succeeds. Do not test registration with a real
+email address unless intentionally creating an account.
 
 ## Configure Vercel
 

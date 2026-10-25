@@ -54,7 +54,15 @@ const CityRow = ({ active, onClick, children }) => (
  * all. A keyboard or a script could still choose a city, which is what made it
  * look like it worked.
  */
-const LocationSelector = ({ city, setCity, cities, loadingCities, label }) => {
+const LocationSelector = ({
+  city,
+  setCity,
+  cities,
+  loadingCities,
+  citiesError,
+  retryCities,
+  label,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropRef = useRef(null);
   const activeKey = city?.key || null;
@@ -117,7 +125,19 @@ const LocationSelector = ({ city, setCity, cities, loadingCities, label }) => {
               <p className="px-3 py-3 text-xs text-slate-400">Loading...</p>
             )}
 
-            {!loadingCities && cities.length === 0 && (
+            {!loadingCities && citiesError && (
+              <div className="px-3 py-3 text-xs text-slate-500">
+                <p>Could not load seller cities.</p>
+                <button
+                  onClick={retryCities}
+                  className="mt-2 font-semibold text-clay underline underline-offset-2"
+                >
+                  Try again
+                </button>
+              </div>
+            )}
+
+            {!loadingCities && !citiesError && cities.length === 0 && (
               <p className="px-3 py-3 text-xs text-slate-400">
                 No seller has filled in their city yet, so there is nothing to
                 choose from.
@@ -155,7 +175,15 @@ const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const { unreadCount } = useUnread();
 
-  const { city, setCity, cities, loadingCities, label } = useLocationFilter();
+  const {
+    city,
+    setCity,
+    cities,
+    loadingCities,
+    citiesError,
+    retryCities,
+    label,
+  } = useLocationFilter();
 
   const [searchQuery, setSearchQuery] = useState("");
   /**
@@ -312,6 +340,8 @@ const Navbar = () => {
         setCity={setCity}
         cities={cities}
         loadingCities={loadingCities}
+        citiesError={citiesError}
+        retryCities={retryCities}
         label={label}
       />
 

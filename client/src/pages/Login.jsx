@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Mail, Lock, Eye, EyeOff, ArrowRight } from "lucide-react";
 import api from "../utils/axios";
 import { useAuth } from "../context/AuthContext";
+import { apiErrorMessage } from "../utils/apiErrorMessage";
 
 const GoogleIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -129,8 +130,7 @@ const Login = () => {
       const errorMessage =
         error.code === "ACCOUNT_LOAD_FAILED"
           ? error.message
-          : error.response?.data?.message ||
-            "Invalid credentials. Please try again.";
+          : apiErrorMessage(error, "Invalid credentials. Please try again.");
       showError("email", errorMessage);
       toast.error(errorMessage);
     } finally {

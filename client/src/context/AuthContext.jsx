@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useRef } from "react";
 import api from "../utils/axios";
+import { apiErrorMessage } from "../utils/apiErrorMessage";
 
 const AuthContext = createContext();
 
@@ -56,7 +57,10 @@ export const AuthProvider = ({ children }) => {
       } else {
         // Anything else is the server or the connection, not the session.
         // The token is kept, so a reload picks straight up again.
-        console.error("Could not reach the server to load your account", error);
+        console.error(
+          "Could not reach the server to load your account:",
+          apiErrorMessage(error, "Account request failed"),
+        );
         setUnreachable(true);
       }
       return false;

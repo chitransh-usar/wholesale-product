@@ -23,6 +23,30 @@ they do not establish what is present in the new Neon database.
 - All 57 included migrations were applied to the explicitly configured local
   `wholesale_marketplace_test` PostgreSQL 18.6 database on 23 Oct 2026. No
   remote database was contacted.
+- On 25 Oct 2026, the application pool connected to that local test database
+  and `SELECT 1` returned the expected result. The live Render API returned
+  HTTP 200 from `/healthz` but HTTP 503 from `/readyz`. Its deployed product
+  and city catalogue endpoints returned HTTP 200 with empty arrays, which is
+  not evidence of a healthy database because the deployed controllers mask
+  query errors as empty results.
+- The PostgreSQL pool now enables TLS for Render internal hosts. Because
+  Render documents those internal certificates as self-signed, certificate
+  verification is disabled only for that internal hostname unless an
+  administrator supplies `DATABASE_SSL_CA`. External hosts require verified
+  TLS. A user-provided production URL uses Render's bare `dpg-...` internal
+  hostname, which the pool now recognizes. The deployed environment and
+  database region alignment remain unverified, and no production migration or
+  write was attempted.
+- Authentication registration now uses a transaction for the user and
+  wholesaler profile. Login and public catalogue endpoints return sanitized
+  database failures rather than an empty success result. The expanded server
+  regression suite passes 49/49.
+- Catalogue retries now cancel superseded requests instead of reloading the
+  whole page, and auth screens translate network and service errors to safe
+  user-facing messages. Catalogue and city-picker requests cancel on cleanup
+  and show retryable failures rather than treating them as empty data. The
+  pool now bounds connection and query waits, so database failures can be
+  reported before the browser's 10-second timeout.
 - A full read-only catalog audit on 23 Oct 2026 confirmed the local target as
   `wholesale_marketplace_test` at `127.0.0.1:5432` with
   `transaction_read_only=on`. It found 78 public tables, 28 sequences, 244
@@ -46,7 +70,7 @@ they do not establish what is present in the new Neon database.
   query retrieved all column types, nullability, defaults, identity, and
   generated-column metadata, but did not produce a complete normalized
   column-by-column diff against every migration statement.
-- All server tests pass 33/33, including migration-runner, startup
+- All server tests passed 33/33 on the original migration review, including migration-runner, startup
   configuration, CORS, and graceful-shutdown tests. JavaScript syntax checks,
   migration plan mode, and `git diff --check` passed.
 - The history-table check validates the exact columns, nullability, timestamp

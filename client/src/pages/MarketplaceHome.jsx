@@ -27,6 +27,7 @@ const MarketplaceHome = () => {
   // A catalogue that failed to load and a catalogue with nothing in it look
   // identical once the array is empty, and they need different words.
   const [loadFailed, setLoadFailed] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -38,10 +39,12 @@ const MarketplaceHome = () => {
   const { cityParam, label: cityLabel, setCity } = useLocationFilter();
 
   useEffect(() => {
+    const controller = new AbortController();
     const fetchCatalog = async () => {
       try {
         const res = await api.get("/api/products", {
           params: cityParam ? { city: cityParam } : {},
+          signal: controller.signal,
         });
 
         const catalog = Array.isArray(res.data) ? res.data : [];
@@ -57,6 +60,7 @@ const MarketplaceHome = () => {
         setProducts(mappedProducts);
         setLoadFailed(false);
       } catch (err) {
+        if (controller.signal.aborted) return;
         // A failed catalogue shows nothing, not something.
         //
         // Two invented products used to stand in here: ABC Textiles in Mumbai
@@ -72,16 +76,17 @@ const MarketplaceHome = () => {
         setProducts([]);
         setLoadFailed(true);
       } finally {
-        setIsFetching(false);
+        if (!controller.signal.aborted) setIsFetching(false);
       }
     };
 
     fetchCatalog();
+    return () => controller.abort();
     // Deliberately no spinner on a city change. The cards already on screen
     // stay until the new ones arrive, which reads better than the whole page
     // blanking out, and the chip below the filter bar has already changed to
     // say which city is being loaded.
-  }, [cityParam]);
+  }, [cityParam, retryCount]);
 
   const categories = useMemo(() => {
     const set = new Set(products.map((p) => p.category).filter(Boolean));
@@ -297,7 +302,10 @@ const MarketplaceHome = () => {
               <>
                 <p>The catalogue could not be loaded.</p>
                 <button
-                  onClick={() => window.location.reload()}
+                  onClick={() => {
+                    setIsFetching(true);
+                    setRetryCount((count) => count + 1);
+                  }}
                   className="mt-3 rounded-xl border border-sage/40 px-4 py-2 text-xs font-bold text-espresso transition-colors hover:border-clay hover:text-clay"
                 >
                   Try again

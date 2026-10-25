@@ -29,7 +29,8 @@
 		"concurrently": "^10.0.3"
 	},
 	"scripts": {
-		"dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\""
+		"dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+		"start": "node server/src/server.js"
 	},
 	"repository": {
 		"type": "git",

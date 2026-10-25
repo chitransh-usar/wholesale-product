@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { INDIAN_STATES } from "../utils/gstin";
+import { apiErrorMessage } from "../utils/apiErrorMessage";
 
 const GoogleIcon = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -208,9 +209,10 @@ const SignUp = () => {
       toast.success("Account created! Check your email for verification.");
       navigate("/login");
     } catch (error) {
-      const errorMessage =
-        error.response?.data?.message ||
-        "Registration failed. Please try again.";
+      const errorMessage = apiErrorMessage(
+        error,
+        "Registration failed. Please try again.",
+      );
       toast.error(errorMessage);
     } finally {
       setLoading(false);

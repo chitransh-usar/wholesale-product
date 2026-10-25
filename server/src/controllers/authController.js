@@ -10,24 +10,63 @@ const {
   NOTIFICATION_CHANNELS,
   NOTIFICATION_TYPES,
 } = require("../services/notificationManager");
+const {
+  databaseErrorStatus,
+  logDatabaseError,
+} = require("../utils/databaseError");
 
 exports.register = async (req, res) => {
-  const { firstName, lastName, email, phone, password, role, state } = req.body;
+  const { firstName, lastName, email, phone, password, role, state } =
+    req.body || {};
+  const normalizedEmail =
+    typeof email === "string" ? email.trim().toLowerCase() : "";
+  const normalizedPhone =
+    typeof phone === "string" ? phone.replace(/\s/g, "") : "";
+  if (
+    typeof firstName !== "string" ||
+    !firstName.trim() ||
+    firstName.trim().length > 100 ||
+    typeof lastName !== "string" ||
+    !lastName.trim() ||
+    lastName.trim().length > 100 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+    normalizedEmail.length > 255 ||
+    !/^\d{10}$/.test(normalizedPhone) ||
+    typeof password !== "string" ||
+    password.length < 8 ||
+    !["buyer", "seller", "both"].includes(role)
+  ) {
+    return res
+      .status(400)
+      .json({ message: "Please provide valid registration details" });
+  }
+
+  let client;
   try {
-    const userExists = await pool.query(
-      "SELECT id FROM users WHERE email = $1",
-      [email],
+    client = await pool.connect();
+    await client.query("BEGIN");
+    const userExists = await client.query(
+      "SELECT id FROM users WHERE lower(email) = $1",
+      [normalizedEmail],
     );
     if (userExists.rows.length > 0) {
+      await client.query("ROLLBACK");
       return res.status(400).json({ message: "Email already registered" });
     }
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    const newUser = await pool.query(
+    const newUser = await client.query(
       "INSERT INTO users (first_name, last_name, email, phone, password_hash, role) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, role",
-      [firstName, lastName, email, phone, passwordHash, role],
+      [
+        firstName.trim(),
+        lastName.trim(),
+        normalizedEmail,
+        normalizedPhone,
+        passwordHash,
+        role,
+      ],
     );
 
     if (role === "seller" || role === "both") {
@@ -46,12 +85,13 @@ exports.register = async (req, res) => {
        * The city is written as an explicit NULL to override that default. A
        * blank city is true; "Delhi" is a claim nobody made.
        */
-      await pool.query(
+      await client.query(
         `INSERT INTO wholesaler_profiles (user_id, warehouse_state, city)
          VALUES ($1, $2, NULL)`,
         [newUser.rows[0].id, asState(state)],
       );
     }
+    await client.query("COMMIT");
 
     // The account already exists at this point, so nothing below may fail the
     // request. A missing notifications table or an unreachable mail provider
@@ -65,29 +105,53 @@ exports.register = async (req, res) => {
         notificationType: NOTIFICATION_TYPES.auth,
         channels: [NOTIFICATION_CHANNELS.IN_APP, NOTIFICATION_CHANNELS.EMAIL],
         emailPayload: {
-          to: email,
+          to: normalizedEmail,
           subject: `Welcome to ${BRAND.name}`,
           templateName: "registration_success",
           variables: { firstName },
         },
       });
     } catch (notifyErr) {
-      console.warn("Welcome notification skipped:", notifyErr.message);
+      console.warn(
+        "Welcome notification skipped:",
+        notifyErr.code || notifyErr.name || "unknown error",
+      );
     }
 
     res.status(201).json({ message: "User registered successfully" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    if (client) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        logDatabaseError("Registration rollback", rollbackError);
+      }
+    }
+    logDatabaseError("Registration", err);
+    if (err.code === "23505" && err.constraint === "users_email_key") {
+      return res.status(400).json({ message: "Email already registered" });
+    }
+    res.status(databaseErrorStatus(err)).json({ message: "Server error" });
+  } finally {
+    client?.release();
   }
 };
 
 exports.login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
+  if (
+    typeof email !== "string" ||
+    !email.trim() ||
+    typeof password !== "string" ||
+    !password
+  ) {
+    return res.status(400).json({ message: "Invalid credentials" });
+  }
+
   try {
     const user = await pool.query(
-      "SELECT id, password_hash, role, first_name, last_name, email FROM users WHERE email = $1",
-      [email],
+      "SELECT id, password_hash, role, first_name, last_name, email FROM users WHERE lower(email) = $1",
+      [email.trim().toLowerCase()],
     );
     if (user.rows.length === 0) {
       return res.status(400).json({ message: "Invalid credentials" });
@@ -115,8 +179,8 @@ exports.login = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    logDatabaseError("Login", err);
+    res.status(databaseErrorStatus(err)).json({ message: "Server error" });
   }
 };
 
@@ -159,8 +223,8 @@ exports.getMe = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    logDatabaseError("Profile lookup", err);
+    res.status(databaseErrorStatus(err)).json({ message: "Server error" });
   }
 };
 
@@ -212,7 +276,7 @@ exports.upgradeToSeller = async (req, res) => {
       .status(200)
       .json({ message: "Successfully upgraded to a seller account!" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error upgrading account" });
+    logDatabaseError("Seller upgrade", err);
+    res.status(databaseErrorStatus(err)).json({ message: "Server error upgrading account" });
   }
 };

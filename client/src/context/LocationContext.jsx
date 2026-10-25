@@ -52,26 +52,32 @@ export const LocationProvider = ({ children }) => {
   });
   const [cities, setCities] = useState([]);
   const [loadingCities, setLoadingCities] = useState(true);
+  const [citiesError, setCitiesError] = useState(false);
+  const [citiesRetry, setCitiesRetry] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     const load = async () => {
       try {
-        const res = await api.get("/api/products/cities");
-        if (!cancelled) setCities(Array.isArray(res.data) ? res.data : []);
+        const res = await api.get("/api/products/cities", {
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) {
+          setCities(Array.isArray(res.data) ? res.data : []);
+          setCitiesError(false);
+        }
       } catch {
-        // An empty menu is the honest failure: the picker then offers only
-        // "All India", which is exactly what the buyer gets.
-        if (!cancelled) setCities([]);
+        if (!controller.signal.aborted) {
+          setCities([]);
+          setCitiesError(true);
+        }
       } finally {
-        if (!cancelled) setLoadingCities(false);
+        if (!controller.signal.aborted) setLoadingCities(false);
       }
     };
     load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    return () => controller.abort();
+  }, [citiesRetry]);
 
   const setCity = useCallback((next) => {
     // null, or anything that folds to nothing, means the whole country.
@@ -84,6 +90,11 @@ export const LocationProvider = ({ children }) => {
     } catch {
       // Private browsing. The choice still holds for this visit.
     }
+  }, []);
+
+  const retryCities = useCallback(() => {
+    setLoadingCities(true);
+    setCitiesRetry((retry) => retry + 1);
   }, []);
 
   /**
@@ -99,10 +110,10 @@ export const LocationProvider = ({ children }) => {
    */
   const known = useMemo(() => {
     if (!city) return null;
-    if (loadingCities) return city;
+    if (loadingCities || citiesError) return city;
     const key = cityKey(city.key || city.city);
     return cities.find((c) => c.key === key) || null;
-  }, [city, cities, loadingCities]);
+  }, [city, cities, loadingCities, citiesError]);
 
   const value = useMemo(
     () => ({
@@ -110,12 +121,14 @@ export const LocationProvider = ({ children }) => {
       setCity,
       cities,
       loadingCities,
+      citiesError,
+      retryCities,
       // What to send to the API. Undefined rather than an empty string so it
       // does not turn up in the query string at all.
       cityParam: known ? cityKey(known.key || known.city) : undefined,
       label: known?.city || ALL_INDIA,
     }),
-    [known, setCity, cities, loadingCities],
+    [known, setCity, cities, loadingCities, citiesError, retryCities],
   );
 
   return (
