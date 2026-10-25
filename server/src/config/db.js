@@ -41,7 +41,9 @@ parsedUrl.searchParams.delete("sslnegotiation");
 
 const pool = new Pool({
   connectionString: parsedUrl.toString(),
-  ssl: isLocalDb ? false : { rejectUnauthorized: true },
+  ssl: isLocalDb || host.endsWith(".render.internal")
+  ? false
+  : { rejectUnauthorized: true },
 });
 
 module.exports = pool;
