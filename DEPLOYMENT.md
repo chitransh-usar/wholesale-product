@@ -535,6 +535,50 @@ PostgreSQL statement, or 9 seconds for a client-side query deadline. Check
 `/readyz` before interpreting an empty catalogue response. A healthy
 `/healthz` only means the HTTP process is running.
 
+### Diagnosing PostgreSQL `42P01` in catalogue endpoints
+
+The city resolver reads `information_schema.columns` for optional city
+columns. It does not issue SQL against `wholesaler_profiles` there. The
+catalogue queries subsequently reference `products`, `supplier_inventory`,
+`users`, and `wholesaler_profiles`; login uses `users`, while seller
+registration also inserts into `wholesaler_profiles`. The migration manifest
+includes `000_baseline.sql`, which defines these relations in `public`.
+
+After deploying, a PostgreSQL `42P01` log includes the structured relation
+and schema fields when the driver supplies them. If a target still reports a
+missing relation, first verify the Render service's `DATABASE_URL` points to
+the intended database without printing the URL. Then run these read-only
+queries in that database:
+
+```sql
+SELECT current_database(), current_schema(), current_setting('search_path');
+
+SELECT table_schema, table_name
+FROM information_schema.tables
+WHERE table_name IN (
+  'products', 'supplier_inventory', 'users', 'wholesaler_profiles',
+  'schema_migrations'
+)
+ORDER BY table_schema, table_name;
+```
+
+If `schema_migrations` is present in `public`, inspect it with:
+
+```sql
+SELECT filename, checksum, applied_at
+FROM public.schema_migrations
+ORDER BY applied_at, filename;
+```
+
+Compare results with the schema and migration history expected for that
+specific database. A missing base relation can mean migrations were not run,
+the service points to a different database, or the relation is outside the
+application's active `search_path`. Do not apply the fresh-database migration
+plan to an existing production database: this repository's runner is
+restricted to the local test database and refuses populated schemas without a
+valid migration ledger. Back up and review production schema/data before
+preparing any forward-only repair migration; do not drop or recreate tables.
+
 After deployment, verify these public GET endpoints without sending credentials:
 
 ```powershell

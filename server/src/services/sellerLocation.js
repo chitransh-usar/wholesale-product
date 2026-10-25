@@ -44,13 +44,26 @@ const CITY_KEY_SQL = cityKeySqlFor(CITY_SQL);
 
 const resolveCitySql = async (dbPool) => {
   const result = await dbPool.query(`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'wholesaler_profiles'
-      AND column_name IN ('warehouse_city', 'city')
+    SELECT
+      to_regclass('public.wholesaler_profiles') IS NOT NULL AS profile_exists,
+      ARRAY(
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'wholesaler_profiles'
+          AND column_name IN ('warehouse_city', 'city')
+      ) AS profile_columns
   `);
-  const columns = new Set(result.rows.map((row) => row.column_name));
+  const profile = result.rows[0];
+  if (!profile?.profile_exists) {
+    const error = new Error("Required PostgreSQL relation is missing.");
+    error.code = "42P01";
+    error.schema = "public";
+    error.table = "wholesaler_profiles";
+    throw error;
+  }
+
+  const columns = new Set(profile.profile_columns || []);
   const hasWarehouseCity = columns.has('warehouse_city');
   const hasLegacyCity = columns.has('city');
   const citySql = citySqlFor({ hasWarehouseCity, hasLegacyCity });

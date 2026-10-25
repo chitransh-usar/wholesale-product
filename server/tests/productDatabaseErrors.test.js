@@ -90,4 +90,49 @@ for (const [name, handlerName] of [
     assert.doesNotMatch(JSON.stringify(response.body) + logs.join(" "), /database URL/);
     assert.match(logs.join(" "), /ECONNREFUSED/);
   });
+
+  test(`${name} reports a missing PostgreSQL relation without leaking error details`, async () => {
+    let queryCount = 0;
+    const queries = [];
+    const controller = loadController({
+      async query(sql) {
+        queryCount += 1;
+        queries.push(sql);
+        if (queryCount === 1) return { rows: [{ column_name: "city" }] };
+        throw Object.assign(
+          new Error("relation details must not be exposed"),
+          {
+            code: "42P01",
+            schema: "public",
+            table: "wholesaler_profiles",
+          },
+        );
+      },
+    });
+    const response = makeResponse();
+    const originalError = console.error;
+    const logs = [];
+    console.error = (...args) => logs.push(args.join(" "));
+
+    try {
+      await controller[handlerName]({ query: {} }, response);
+    } finally {
+      console.error = originalError;
+    }
+
+    assert.equal(response.statusCode, 500);
+    assert.doesNotMatch(
+      JSON.stringify(response.body) + logs.join(" "),
+      /relation details must not be exposed/,
+    );
+    assert.match(logs.join(" "), /42P01/);
+    assert.match(logs.join(" "), /relation=public\.wholesaler_profiles/);
+    assert.match(queries[0], /information_schema\.columns/);
+    assert.match(queries[1], /supplier_inventory/);
+    assert.match(queries[1], /JOIN users/);
+    assert.match(queries[1], /wholesaler_profiles/);
+    if (handlerName === "getPublicCatalog") {
+      assert.match(queries[1], /FROM products/);
+    }
+  });
 }

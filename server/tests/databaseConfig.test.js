@@ -105,4 +105,16 @@ test("database errors map to availability status and log no error message", () =
     message: "secret connection URL",
   }, { error: (...args) => logged.push(args.join(" ")) });
   assert.equal(logged.join(" "), "Login failed: DEPTH_ZERO_SELF_SIGNED_CERT");
+
+  logged.length = 0;
+  logDatabaseError("Catalogue", {
+    code: "42P01",
+    schema: "public",
+    table: "wholesaler_profiles",
+    message: "sensitive SQL details",
+  }, { error: (...args) => logged.push(args.join(" ")) });
+  assert.equal(
+    logged.join(" "),
+    "Catalogue failed: 42P01 relation=public.wholesaler_profiles",
+  );
 });

@@ -29,6 +29,16 @@ they do not establish what is present in the new Neon database.
   and city catalogue endpoints returned HTTP 200 with empty arrays, which is
   not evidence of a healthy database because the deployed controllers mask
   query errors as empty results.
+- A later read-only check on 25 Oct 2026 found Render `/readyz` returning 200,
+  while both catalogue endpoints returned 500. The reported `42P01` cannot
+  identify which referenced relation is absent because the old logger retained
+  only the SQLSTATE. Runtime catalogue SQL references `products`,
+  `supplier_inventory`, `users`, and `wholesaler_profiles`; the seller-location
+  resolver introspects `information_schema.columns` for optional city columns.
+  The migration manifest includes `000_baseline.sql`, which defines all four
+  application relations, but the live database's schema and migration history
+  were not queried. Database errors now include PostgreSQL's structured
+  schema/table fields when supplied, without logging SQL or connection details.
 - The PostgreSQL pool now enables TLS for Render internal hosts. Because
   Render documents those internal certificates as self-signed, certificate
   verification is disabled only for that internal hostname unless an

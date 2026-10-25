@@ -25,9 +25,14 @@ function databaseErrorStatus(error) {
 }
 
 function logDatabaseError(operation, error, logger = console) {
+  const relation =
+    error?.schema && error?.table
+      ? `${error.schema}.${error.table}`
+      : error?.table;
   logger.error(
     `${operation} failed:`,
     error?.code || error?.name || "unknown database error",
+    ...(relation ? [`relation=${relation}`] : []),
   );
 }
 

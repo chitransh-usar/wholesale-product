@@ -96,6 +96,10 @@ test("seller registration creates user and profile in one transaction", async ()
 
   assert.equal(response.statusCode, 201);
   assert.equal(pool.calls[0].sql, "BEGIN");
+  assert.match(
+    pool.calls.find((call) => call.sql.startsWith("SELECT id FROM users")).sql,
+    /FROM users/,
+  );
   assert.deepEqual(pool.calls.find((call) => call.sql.startsWith("INSERT INTO users")).params.slice(0, 4), [
     "Asha",
     "Patel",
@@ -222,8 +226,10 @@ test("duplicate registration and malformed bodies return client errors", async (
 test("login succeeds with normalized email and returns the existing response shape", async () => {
   const passwordHash = await bcrypt.hash("a valid password", 4);
   let parameters;
+  let sql;
   const pool = {
-    async query(_sql, values) {
+    async query(query, values) {
+      sql = query;
       parameters = values;
       return {
         rows: [{
@@ -244,6 +250,7 @@ test("login succeeds with normalized email and returns the existing response sha
     const response = makeResponse();
     await controller.login({ body: { email: " ASHA@EXAMPLE.COM ", password: "a valid password" } }, response);
     assert.equal(response.statusCode, 200);
+    assert.match(sql, /FROM users/);
     assert.equal(parameters[0], "asha@example.com");
     assert.equal(response.body.user.email, "asha@example.com");
     assert.ok(response.body.token);
