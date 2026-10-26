@@ -17,15 +17,16 @@ Newest first. Dates are when the work landed on `claude/wholesale-3.0`.
   `options: "-c search_path=public"` on every connection. Neon pooled
   endpoints reject that startup parameter with SQLSTATE `08P01`.
 - Removed the custom startup option. Added a configuration guard for URL
-  `options` parameters that set `search_path`, including URL-encoded and
-  repeated options. Existing connection-pool settings and verified TLS remain
-  unchanged.
-- Confirmed no other active pool configuration sets the startup option.
-  Remaining `search_path` references are read-only checks, tests, or
+  `options` parameters and inherited `PGOPTIONS` values that set
+  `search_path`, including URL-encoded and repeated options. `pg@8.22.0`
+  reads `PGOPTIONS` when the pool does not specify `options`. Existing
+  connection-pool settings and verified TLS remain unchanged.
+- Confirmed no other active application pool configuration sets the startup
+  option. Remaining `search_path` references are read-only checks, tests, or
   diagnostics. No query changes were needed: PostgreSQL's default search path
   includes `public`, and application migrations create tables there.
 - The database configuration test passed, and the complete backend suite
-  passed 79/79. The frontend production build passed with the required
+  passed 80/80. The frontend production build passed with the required
   `VITE_API_BASE_URL`. Frontend lint still reports 40 existing errors and 5
   warnings in untouched files. No Neon or production database was contacted.
 

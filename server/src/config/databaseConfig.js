@@ -28,10 +28,14 @@ function buildDatabaseConfig(databaseUrl, caCertificate) {
     host.endsWith(".render.internal") || /^dpg-[a-z0-9]+-[a-z]$/.test(host);
   const sslMode = parsedUrl.searchParams.get("sslmode")?.toLowerCase();
   const urlOptions = parsedUrl.searchParams.getAll("options");
+  const hasSearchPathOption = (options) => /\bsearch_path\s*=/i.test(options);
 
-  if (urlOptions.some((options) => /\bsearch_path\s*=/i.test(options))) {
+  if (
+    urlOptions.some(hasSearchPathOption) ||
+    hasSearchPathOption(process.env.PGOPTIONS || "")
+  ) {
     throw new Error(
-      "DATABASE_URL must not set search_path through the options parameter. Neon pooled connections reject this startup parameter.",
+      "Do not set search_path through DATABASE_URL options or PGOPTIONS. Neon pooled connections reject this startup parameter.",
     );
   }
 

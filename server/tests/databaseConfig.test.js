@@ -63,7 +63,11 @@ test("Neon pooled connections do not receive a search_path startup option", () =
   );
   const client = new Client(config);
 
-  assert.equal(client.connectionParameters.options, undefined);
+  assert.equal(Object.hasOwn(config, "options"), false);
+  assert.doesNotMatch(
+    client.connectionParameters.options || "",
+    /\bsearch_path\s*=/i,
+  );
   assert.doesNotMatch(config.connectionString, /(?:^|[?&])options=/i);
 });
 
@@ -75,8 +79,22 @@ test("search_path in URL-encoded PostgreSQL startup options is rejected", () => 
   ]) {
     assert.throws(
       () => buildDatabaseConfig(url),
-      /must not set search_path through the options parameter/,
+      /Do not set search_path through DATABASE_URL options or PGOPTIONS/,
     );
+  }
+});
+
+test("PGOPTIONS cannot inject search_path into the pooled connection startup packet", () => {
+  const originalPgOptions = process.env.PGOPTIONS;
+  process.env.PGOPTIONS = "-c search_path=public";
+  try {
+    assert.throws(
+      () => buildDatabaseConfig("postgresql://db.example.com/app"),
+      /Do not set search_path through DATABASE_URL options or PGOPTIONS/,
+    );
+  } finally {
+    if (originalPgOptions === undefined) delete process.env.PGOPTIONS;
+    else process.env.PGOPTIONS = originalPgOptions;
   }
 });
 

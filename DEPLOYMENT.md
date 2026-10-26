@@ -671,8 +671,9 @@ The pool does not send a PostgreSQL startup `options` parameter. This is
 required for Neon pooled connections, which reject `search_path` in startup
 options. PostgreSQL's default search path includes `public`, where the
 application migrations create the tables. Do not add `options=-c
-search_path=public` (including a URL-encoded equivalent) to `DATABASE_URL`;
-the server rejects such a URL with an actionable configuration error.
+search_path=public` (including a URL-encoded equivalent) to `DATABASE_URL`,
+or set `PGOPTIONS` to a value that sets `search_path`; the server rejects
+either configuration with an actionable error.
 Remote TLS remains verified. The pool gives up after 5 seconds waiting for a
 connection, 8 seconds for a PostgreSQL statement, or 9 seconds for a
 client-side query deadline. Check `/readyz` before interpreting an empty
