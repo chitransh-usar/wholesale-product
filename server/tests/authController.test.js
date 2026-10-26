@@ -283,6 +283,93 @@ test("login rejects invalid credentials without identifying whether the user exi
   assert.deepEqual(response.body, { message: "Invalid credentials" });
 });
 
+test("seller upgrade commits the role change and profile together", async () => {
+  const calls = [];
+  const client = {
+    async query(sql) {
+      calls.push(sql);
+      if (sql.startsWith("SELECT role FROM users")) {
+        return { rows: [{ role: "buyer" }] };
+      }
+      return { rows: [] };
+    },
+    release() {
+      calls.push("RELEASE");
+    },
+  };
+  const controller = loadController({
+    async connect() {
+      return client;
+    },
+  });
+  const response = makeResponse();
+
+  await controller.upgradeToSeller(
+    {
+      user: { id: "user-1" },
+      body: { companyName: "Asha Textiles", phone: "9876543210", city: "Surat" },
+    },
+    response,
+  );
+
+  assert.equal(response.statusCode, 200);
+  assert.ok(calls.includes("BEGIN"));
+  assert.ok(calls.some((sql) => sql.startsWith("UPDATE users SET role")));
+  assert.ok(calls.some((sql) => sql.startsWith("INSERT INTO wholesaler_profiles")));
+  assert.ok(calls.includes("COMMIT"));
+  assert.equal(calls.includes("ROLLBACK"), false);
+  assert.equal(calls.at(-1), "RELEASE");
+});
+
+test("seller upgrade rolls the role change back if profile creation fails", async () => {
+  const calls = [];
+  const client = {
+    async query(sql) {
+      calls.push(sql);
+      if (sql.startsWith("SELECT role FROM users")) {
+        return { rows: [{ role: "buyer" }] };
+      }
+      if (sql.startsWith("INSERT INTO wholesaler_profiles")) {
+        throw Object.assign(new Error("missing profile relation"), {
+          code: "42P01",
+          schema: "public",
+          table: "wholesaler_profiles",
+        });
+      }
+      return { rows: [] };
+    },
+    release() {
+      calls.push("RELEASE");
+    },
+  };
+  const controller = loadController({
+    async connect() {
+      return client;
+    },
+  });
+  const response = makeResponse();
+  const originalError = console.error;
+  console.error = () => {};
+
+  try {
+    await controller.upgradeToSeller(
+      {
+        user: { id: "user-1" },
+        body: { companyName: "Asha Textiles", phone: "9876543210", city: "Surat" },
+      },
+      response,
+    );
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(response.statusCode, 500);
+  assert.ok(calls.some((sql) => sql.startsWith("UPDATE users SET role")));
+  assert.ok(calls.includes("ROLLBACK"));
+  assert.equal(calls.includes("COMMIT"), false);
+  assert.equal(calls.at(-1), "RELEASE");
+});
+
 test("login reports database outages as 503 and logs only a sanitized code", async () => {
   const controller = loadController({
     async query() {
@@ -302,4 +389,37 @@ test("login reports database outages as 503 and logs only a sanitized code", asy
   assert.deepEqual(response.body, { message: "Server error" });
   assert.doesNotMatch(JSON.stringify(response.body) + logs.join(" "), /secret|db:\/\//);
   assert.match(logs.join(" "), /28P01/);
+});
+
+test("login identifies an undefined users relation without exposing SQL details", async () => {
+  let sql;
+  const controller = loadController({
+    async query(query) {
+      sql = query;
+      throw Object.assign(new Error("sensitive relation detail"), {
+        code: "42P01",
+        schema: "public",
+        table: "users",
+      });
+    },
+  });
+  const response = makeResponse();
+  const originalError = console.error;
+  const logs = [];
+  console.error = (...args) => logs.push(args.join(" "));
+
+  try {
+    await controller.login(
+      { body: { email: "asha@example.com", password: "password" } },
+      response,
+    );
+  } finally {
+    console.error = originalError;
+  }
+
+  assert.equal(response.statusCode, 500);
+  assert.match(sql, /FROM users/);
+  assert.doesNotMatch(sql, /wholesaler_profiles/);
+  assert.match(logs.join(" "), /relation=public\.users/);
+  assert.doesNotMatch(logs.join(" "), /sensitive relation detail/);
 });

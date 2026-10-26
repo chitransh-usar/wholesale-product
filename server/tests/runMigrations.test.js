@@ -25,9 +25,9 @@ function migrationChecksum(filename) {
   );
 }
 
-test("manifest classifies every SQL file into 58 included and 7 excluded", () => {
+test("manifest classifies every SQL file into 59 included and 7 excluded", () => {
   validateManifest();
-  assert.equal(MIGRATION_FILES.length, 58);
+  assert.equal(MIGRATION_FILES.length, 59);
   assert.equal(Object.keys(EXCLUDED_FILES).length, 7);
 });
 
@@ -35,7 +35,7 @@ test("profile recovery migration is forward-only and matches the established sch
   const filename = "wholesale3_restore_wholesaler_profiles.sql";
   const sql = fs.readFileSync(path.join(__dirname, "..", "migrations", filename), "utf8");
 
-  assert.equal(MIGRATION_FILES.at(-1), filename);
+  assert.equal(MIGRATION_FILES.at(-2), filename);
   assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.wholesaler_profiles/);
   assert.match(sql, /CONSTRAINT wholesaler_profiles_pkey PRIMARY KEY \(id\)/);
   assert.match(sql, /FOREIGN KEY \(user_id\) REFERENCES public\.users\(id\) ON DELETE CASCADE/);
@@ -47,6 +47,32 @@ test("profile recovery migration is forward-only and matches the established sch
     /;/,
   );
   assert.doesNotMatch(sql, /trust_score|response_rate|response_time/);
+});
+
+test("profile payout repair only adds established optional columns", () => {
+  const filename = "wholesale3_restore_wholesaler_profile_payout_fields.sql";
+  const sql = fs.readFileSync(path.join(__dirname, "..", "migrations", filename), "utf8");
+
+  assert.equal(MIGRATION_FILES.at(-1), filename);
+  assert.match(sql, /ALTER TABLE public\.wholesaler_profiles/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS bank_account_number VARCHAR\(40\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS bank_ifsc VARCHAR\(20\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS bank_branch VARCHAR\(255\)/);
+  assert.doesNotMatch(sql, /\bDROP\b|\bINSERT\s+INTO\b/i);
+});
+
+test("baseline defines the authentication relations and login columns", () => {
+  const sql = fs.readFileSync(
+    path.join(__dirname, "..", "migrations", "000_baseline.sql"),
+    "utf8",
+  );
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS users \([\s\S]*?first_name character varying\(100\) NOT NULL/);
+  assert.match(sql, /password_hash character varying\(255\) NOT NULL/);
+  assert.match(sql, /role character varying\(20\) NOT NULL/);
+  assert.match(sql, /ADD CONSTRAINT users_pkey PRIMARY KEY \(id\)/);
+  assert.match(sql, /ADD CONSTRAINT users_email_key UNIQUE \(email\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS wholesaler_profiles \([\s\S]*?user_id uuid/);
 });
 
 test("plan mode does not load the database module", async () => {

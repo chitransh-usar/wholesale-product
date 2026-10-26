@@ -61,6 +61,7 @@ const MIGRATION_FILES = [
   "wholesale3_marketplace_linkages.sql",
   "z_fix_order_payment_status_constraint.sql",
   "wholesale3_restore_wholesaler_profiles.sql",
+  "wholesale3_restore_wholesaler_profile_payout_fields.sql",
 ];
 
 const EXCLUDED_FILES = {
@@ -723,6 +724,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  LOCK_ID,
   MIGRATION_FILES,
   EXCLUDED_FILES,
   assertBaselineSchemaClean,

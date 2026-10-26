@@ -1,6 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  cityFilterFrom,
+  cityKey,
+  cityKeySqlFor,
   citySqlFor,
   resolveCitySql,
 } = require("../src/services/sellerLocation");
@@ -45,6 +48,40 @@ test("seller location supports older profiles without either city column", async
   assert.equal(result.hasWarehouseCity, false);
   assert.equal(result.citySql, "NULL");
   assert.equal(citySqlFor({ hasLegacyCity: false, hasWarehouseCity: false }), "NULL");
+});
+
+test("seller location generates valid expressions for either optional city column", async () => {
+  assert.match(
+    citySqlFor({ hasWarehouseCity: true, hasLegacyCity: false }),
+    /wp\.warehouse_city/,
+  );
+  assert.doesNotMatch(
+    citySqlFor({ hasWarehouseCity: true, hasLegacyCity: false }),
+    /wp\.city/,
+  );
+  assert.equal(
+    citySqlFor({ hasWarehouseCity: false, hasLegacyCity: true }),
+    "NULLIF(btrim(wp.city), '')",
+  );
+  assert.match(
+    cityKeySqlFor("NULLIF(btrim(wp.warehouse_city), '')"),
+    /lower\(regexp_replace/,
+  );
+  const warehouseOnly = await resolveCitySql({
+    async query() {
+      return { rows: [{ profile_exists: true, profile_columns: ["warehouse_city"] }] };
+    },
+  });
+  assert.match(warehouseOnly.citySql, /wp\.warehouse_city/);
+  assert.doesNotMatch(warehouseOnly.citySql, /wp\.city/);
+});
+
+test("city filtering folds whitespace and ignores all-city selections", () => {
+  assert.equal(cityKey(" Surat  Textile  Market "), "surat textile market");
+  assert.equal(cityFilterFrom({ city: " Surat  Textile  Market " }), "surat textile market");
+  assert.equal(cityFilterFrom({}), null);
+  assert.equal(cityFilterFrom({ city: "All India" }), null);
+  assert.equal(cityFilterFrom({ city: "all" }), null);
 });
 
 test("seller location identifies a missing required profile relation", async () => {

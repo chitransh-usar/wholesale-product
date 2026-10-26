@@ -37,6 +37,7 @@
  * real run would delete, counted from the database rather than guessed.
  */
 const { Pool } = require("pg");
+const buildDatabaseConfig = require("../src/config/databaseConfig");
 
 const url = process.argv[2];
 const email = process.argv[3];
@@ -51,12 +52,9 @@ if (!url || !email) {
   process.exit(1);
 }
 
-// Neon needs TLS; a local Postgres started for a rehearsal does not offer it.
-const local = /127\.0\.0\.1|localhost/.test(url);
-const pool = new Pool({
-  connectionString: url,
-  ...(local ? {} : { ssl: { rejectUnauthorized: false } }),
-});
+const pool = new Pool(
+  buildDatabaseConfig(url, process.env.DATABASE_SSL_CA || undefined),
+);
 
 /**
  * Deletes, in an order that never leaves a row pointing at a missing one.

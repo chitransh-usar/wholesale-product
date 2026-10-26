@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { Client } = require("pg");
 const buildDatabaseConfig = require("../src/config/databaseConfig");
 const { databaseErrorStatus, logDatabaseError } = require("../src/utils/databaseError");
 
@@ -22,6 +23,7 @@ test("database URL is required and malformed or non-PostgreSQL URLs are rejected
 test("local PostgreSQL defaults to no TLS but can explicitly require TLS", () => {
   const local = buildDatabaseConfig("postgresql://user:secret@localhost:5432/app");
   assert.equal(local.ssl, false);
+  assert.equal(local.options, "-c search_path=public");
   assert.equal(local.connectionTimeoutMillis, 5000);
   assert.equal(local.idleTimeoutMillis, 30000);
   assert.equal(local.query_timeout, 9000);
@@ -53,29 +55,31 @@ test("external PostgreSQL connections always require verified TLS", () => {
   );
 });
 
-test("Render internal PostgreSQL uses TLS for its documented self-signed certificate", () => {
-  const internalUrl = "postgresql://user:secret@abc.render.internal/db";
-  const defaultConfig = buildDatabaseConfig(internalUrl);
-  assert.deepEqual(defaultConfig.ssl, { rejectUnauthorized: false });
+test("node-postgres receives the explicit public schema search path", () => {
+  const config = buildDatabaseConfig("postgresql://db.example.com/app");
+  const client = new Client(config);
 
-  const requiredConfig = buildDatabaseConfig(`${internalUrl}?sslmode=require`);
-  assert.deepEqual(requiredConfig.ssl, { rejectUnauthorized: false });
+  assert.equal(client.connectionParameters.options, "-c search_path=public");
+});
+
+test("Render internal PostgreSQL requires a trusted CA for verified TLS", () => {
+  const internalUrl = "postgresql://user:secret@abc.render.internal/db";
+  assert.throws(() => buildDatabaseConfig(internalUrl), /requires DATABASE_SSL_CA/);
+  assert.throws(
+    () => buildDatabaseConfig(`${internalUrl}?sslmode=require`),
+    /requires DATABASE_SSL_CA/,
+  );
 
   const ca = "-----BEGIN CERTIFICATE-----\ntrusted-ca\n-----END CERTIFICATE-----";
   assert.deepEqual(
-    buildDatabaseConfig(`${internalUrl}?sslmode=verify-full`, ca).ssl,
+    buildDatabaseConfig(`${internalUrl}?sslmode=require`, ca).ssl,
     { rejectUnauthorized: true, ca },
-  );
-  assert.throws(
-    () => buildDatabaseConfig(`${internalUrl}?sslmode=verify-full`),
-    /self-signed/,
   );
 });
 
-test("Render's bare internal database hostname uses self-signed TLS settings", () => {
+test("Render's bare internal database hostname also requires verified TLS", () => {
   const host = "dpg-dbep0c8ae00c73ds38dg-a";
-  const config = buildDatabaseConfig(`postgresql://user:secret@${host}/db`);
-  assert.deepEqual(config.ssl, { rejectUnauthorized: false });
+  assert.throws(() => buildDatabaseConfig(`postgresql://${host}/db`), /requires DATABASE_SSL_CA/);
 });
 
 test("remote plaintext and conflicting URL SSL parameters are refused", () => {

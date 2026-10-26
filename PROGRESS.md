@@ -17,21 +17,30 @@ The following is the current local deployment-preparation state. The older
 hand-run migration notes below describe previous development database work;
 they do not establish what is present in the new Neon database.
 
-- The migration runner now has an explicit 58-file order and 7 explicit
+- The migration runner now has an explicit 59-file order and 7 explicit
   exclusions. Plan mode prints the full list and does not load the database
   module. `--apply` is required to request database changes.
-- Added the forward-only `wholesale3_restore_wholesaler_profiles.sql` repair
-  after repository review confirmed that `000_baseline.sql` defines the
-  missing relation, while no existing dedicated migration creates it. The
-  repair follows the baseline and later profile migrations and preserves the
-  documented primary key, nullable user foreign key, and Razorpay uniqueness
-  rule. It inserts no rows and drops nothing. It has not been applied to
-  Render. The login query reads `users`, not `wholesaler_profiles`; the login
-  log omitted relation detail, and production `public.users`, `DATABASE_URL`,
-  and migration history remain unverified.
-- The earlier local replay verified 57 migrations before this repair was
-  added. The expanded manifest and new repair have not yet been replayed
-  against a disposable/local database.
+- Added a verified, explicit Render repair command for
+  `wholesale3_restore_wholesaler_profiles.sql` and a follow-up migration for
+  established payout columns omitted from the first recovery table definition.
+  The command only applies these migrations after checking the expected
+  database name, public search path, public users relation, conflicting
+  schemas, existing table shape, backup confirmation, and compatible migration
+  history. It uses an advisory lock and transaction. It has not been applied
+  to Render. The login query reads `users`, not `wholesaler_profiles`; the
+  login log omitted relation detail, and production `public.users`,
+  `DATABASE_URL`, and migration history remain unverified.
+- Remote PostgreSQL TLS now always verifies certificates, including Render
+  internal hosts. Configure `DATABASE_SSL_CA` with a trusted CA for a private
+  internal endpoint, or use the provider's externally trusted endpoint. The
+  application also pins the connection search path to `public`.
+- Seller upgrade now commits the users role update and profile insert in one
+  transaction so a missing profile table cannot leave a half-upgraded account.
+- The guarded local migration runner applied migration 59
+  (`wholesale3_restore_wholesaler_profile_payout_fields.sql`) to
+  `wholesale_marketplace_test` on 26 Oct 2026. A second run recorded all 59
+  migrations without reapplying the new file. The database already had the
+  profile table, so this did not exercise creation of a missing table.
 - All 57 included migrations were applied to the explicitly configured local
   `wholesale_marketplace_test` PostgreSQL 18.6 database on 23 Oct 2026. No
   remote database was contacted.
@@ -51,14 +60,8 @@ they do not establish what is present in the new Neon database.
   application relations, but the live database's schema and migration history
   were not queried. Database errors now include PostgreSQL's structured
   schema/table fields when supplied, without logging SQL or connection details.
-- The PostgreSQL pool now enables TLS for Render internal hosts. Because
-  Render documents those internal certificates as self-signed, certificate
-  verification is disabled only for that internal hostname unless an
-  administrator supplies `DATABASE_SSL_CA`. External hosts require verified
-  TLS. A user-provided production URL uses Render's bare `dpg-...` internal
-  hostname, which the pool now recognizes. The deployed environment and
-  database region alignment remain unverified, and no production migration or
-  write was attempted.
+- The deployed environment and database region alignment remain unverified,
+  and no production migration or write was attempted.
 - Authentication registration now uses a transaction for the user and
   wholesaler profile. Login and public catalogue endpoints return sanitized
   database failures rather than an empty success result. The expanded server

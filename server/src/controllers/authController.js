@@ -243,20 +243,28 @@ exports.upgradeToSeller = async (req, res) => {
     gstinValue = result.gstin;
   }
 
+  let client;
   try {
-    const userResult = await pool.query(
+    client = await pool.connect();
+    await client.query("BEGIN");
+    const userResult = await client.query(
       "SELECT role FROM users WHERE id = $1",
       [userId],
     );
-    const currentRole = userResult.rows[0].role;
+    const currentRole = userResult.rows[0]?.role;
 
     if (currentRole === "seller" || currentRole === "both") {
+      await client.query("ROLLBACK");
       return res
         .status(400)
         .json({ message: "You are already registered as a seller." });
     }
 
-    await pool.query("UPDATE users SET role = 'both' WHERE id = $1", [userId]);
+    if (!currentRole) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ message: "User not found" });
+    }
+    await client.query("UPDATE users SET role = 'both' WHERE id = $1", [userId]);
 
     // The state comes from what they picked if they picked one, and otherwise
     // from their GST number, whose first two digits are the state. Only if they
@@ -265,18 +273,28 @@ exports.upgradeToSeller = async (req, res) => {
     const declaredState =
       asState(state) || (gstinValue ? checkGstin(gstinValue).stateName : null);
 
-    await pool.query(
+    await client.query(
       `INSERT INTO wholesaler_profiles
          (user_id, company_name, gstin, contact_phone, city, warehouse_state, is_verified)
        VALUES ($1, $2, $3, $4, $5, $6, false)`,
       [userId, companyName, gstinValue, phone, city || null, declaredState],
     );
+    await client.query("COMMIT");
 
     res
       .status(200)
       .json({ message: "Successfully upgraded to a seller account!" });
   } catch (err) {
+    if (client) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        logDatabaseError("Seller upgrade rollback", rollbackError);
+      }
+    }
     logDatabaseError("Seller upgrade", err);
     res.status(databaseErrorStatus(err)).json({ message: "Server error upgrading account" });
+  } finally {
+    client?.release();
   }
 };

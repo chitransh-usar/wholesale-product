@@ -38,9 +38,9 @@ function buildDatabaseConfig(databaseUrl, caCertificate) {
     throw new Error("SSL cannot be disabled for a remote PostgreSQL connection.");
   }
 
-  if (isRenderInternal && sslMode === "verify-full" && !caCertificate) {
+  if (isRenderInternal && !caCertificate) {
     throw new Error(
-      "Render internal PostgreSQL certificates are self-signed. Use sslmode=require, omit sslmode, or provide DATABASE_SSL_CA.",
+      "Render internal PostgreSQL requires DATABASE_SSL_CA for verified TLS. Use a trusted CA certificate or the provider's verified external URL.",
     );
   }
 
@@ -58,7 +58,7 @@ function buildDatabaseConfig(databaseUrl, caCertificate) {
   let ssl = false;
   if (!isLocalDb || sslMode === "require" || sslMode === "verify-full") {
     ssl = {
-      rejectUnauthorized: !(isRenderInternal && !caCertificate),
+      rejectUnauthorized: true,
     };
     if (caCertificate) ssl.ca = caCertificate;
   }
@@ -66,6 +66,7 @@ function buildDatabaseConfig(databaseUrl, caCertificate) {
   return {
     connectionString: parsedUrl.toString(),
     ssl,
+    options: "-c search_path=public",
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
     query_timeout: 9000,

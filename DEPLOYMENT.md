@@ -97,13 +97,13 @@ database has the same schema or permissions.
 3. **Set the exact frontend origin.** Production Express CORS and Socket.IO
    now use the same `CLIENT_URL` allowlist. Set it to the Vercel origin, with
    comma-separated origins only if more than one is intentionally allowed.
-4. **Use the correct PostgreSQL endpoint and TLS policy.** For Render's
+4. **Use the correct PostgreSQL endpoint and verified TLS.** For Render's
    internal database URL, the backend and database must be in compatible
-   regions. The server encrypts internal connections and accepts Render's
-   documented self-signed internal certificate only for Render internal
-   hostnames. For external database hosts, TLS certificate verification stays
-   enabled. Supply a trusted PEM with `DATABASE_SSL_CA` when the provider
-   requires a private CA. Do not set `sslmode=disable` for a remote database.
+   regions. All remote PostgreSQL connections verify the server certificate.
+   Supply a trusted PEM with `DATABASE_SSL_CA` when the provider's internal
+   endpoint uses a private or self-signed CA. If no trusted CA is available,
+   use the provider's external database URL with its trusted certificate.
+   Never bypass certificate verification or set `sslmode=disable` remotely.
 5. **Review the tax seed.** The test-only `GST28_CESS12` seed was removed from
    the migration so a fresh production database does not start with an
    unverified nonzero cess rate. This source change does not alter a row that
@@ -458,6 +458,7 @@ same list and checks that the files on disk still match it.
 56. `wholesale3_marketplace_linkages.sql`
 57. `z_fix_order_payment_status_constraint.sql`
 58. `wholesale3_restore_wholesaler_profiles.sql`
+59. `wholesale3_restore_wholesaler_profile_payout_fields.sql`
 
 ## Local migration command
 
@@ -512,7 +513,7 @@ Set secrets and server variables in the host dashboard, not in Vercel:
 | Variable | Required? | Purpose |
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL URL for the application. Keep it server-only. When using Render PostgreSQL, use its Internal Database URL only when the services are in compatible regions; otherwise use the provider's external URL and documented TLS settings. External hosts require verified TLS. The pool uses at most 10 connections per backend process. |
-| `DATABASE_SSL_CA` | Optional | Trusted PEM CA certificate for a provider that uses a private CA. Do not disable verification for external hosts. |
+| `DATABASE_SSL_CA` | Conditional | Trusted PEM CA certificate for a private or self-signed PostgreSQL endpoint, including Render internal hosts when their certificate is not publicly trusted. Remote TLS verification is never disabled. |
 | `JWT_SECRET` | Yes | Secret used to sign and verify sessions. Rotate the previously shared value. |
 | `CLIENT_URL` | Yes in production | Exact Vercel origin, or a comma-separated list of exact allowed origins. No paths or wildcard. |
 | `PORT` | Host supplied | The server reads this value and defaults to 5000 locally. |
@@ -532,10 +533,11 @@ The backend binds to the platform-provided port. Startup rejects a missing
 PostgreSQL pool. `/healthz` is a liveness check; `/readyz` returns a failure
 response when PostgreSQL is unavailable.
 
-The pool gives up after 5 seconds waiting for a connection, 8 seconds for a
-PostgreSQL statement, or 9 seconds for a client-side query deadline. Check
-`/readyz` before interpreting an empty catalogue response. A healthy
-`/healthz` only means the HTTP process is running.
+The pool sets the active PostgreSQL search path to `public`, verifies TLS for
+all remote connections, and gives up after 5 seconds waiting for a connection,
+8 seconds for a PostgreSQL statement, or 9 seconds for a client-side query
+deadline. Check `/readyz` before interpreting an empty catalogue response. A
+healthy `/healthz` only means the HTTP process is running.
 
 ### Diagnosing PostgreSQL `42P01` in catalogue and authentication
 
@@ -547,10 +549,11 @@ registration also inserts into `wholesaler_profiles`. The migration manifest
 includes `000_baseline.sql`, which defines these relations in `public`. The
 confirmed catalogue error names `public.wholesaler_profiles`. The login
 handler's credential query is `SELECT ... FROM users`; it does not reference
-`wholesaler_profiles`, so a login `42P01` from this code path concerns `users`.
-The reported login log omitted PostgreSQL's relation detail, so verify
-`public.users` in the connected database before attributing that error to a
-specific schema or database.
+`wholesaler_profiles`. The reported login log omitted PostgreSQL's relation
+detail, so the source query is known but the exact relation resolution failure
+is not. Verify `public.users` and the active search path in the connected
+database before attributing that error to a missing table versus an incorrect
+database or schema.
 
 After deploying, a PostgreSQL `42P01` log includes the structured relation
 and schema fields when the driver supplies them. First verify the Render
@@ -588,22 +591,60 @@ ORDER BY ordinal_position;
 If the ledger has the expected `filename`, `checksum`, and `applied_at`
 columns, compare its rows with the migration manifest. A missing baseline
 record or database/schema mismatch is not established until these live checks
-have been made. The new
-`wholesale3_restore_wholesaler_profiles.sql` migration is a narrow
-forward-only repair based on the baseline and later profile migrations. It
-creates the table only if absent, inserts no users or profile rows, and relies
-on the existing `public.users(id)` key for its foreign key. It does not repair
-a missing `public.users` table or other missing baseline relations.
+have been made. The `wholesale3_restore_wholesaler_profiles.sql` migration is
+a narrow, forward-only repair based on the baseline and later profile
+migrations. It creates the table only if absent, inserts no users or profile
+rows, and relies on the existing `public.users(id)` key for its foreign key.
+The following
+`wholesale3_restore_wholesaler_profile_payout_fields.sql` adds three optional
+bank-detail fields already present in the application's invoice schema. Neither
+migration repairs a missing `public.users` table or other missing baseline
+relations.
 
-Before applying it, create and verify a Neon backup/branch or another
-recoverable backup of the intended production database. Confirm `public.users`
-exists and the only missing required relation is `public.wholesaler_profiles`.
-Review the migration, then apply only that file through the provider's SQL
-editor or an approved production migration process. Do not run the full
-baseline or local migration runner against production. If your migration
-history records this migration, preserve its existing schema and recording
-conventions; do not manually fabricate a ledger entry. The local runner is
-restricted to the local test database.
+Read the ledger only after checking its columns:
+
+```sql
+SELECT filename, checksum, applied_at
+FROM public.schema_migrations
+ORDER BY applied_at, filename;
+```
+
+Before applying anything, create and verify a provider backup or recoverable
+branch for the database named by Render's `DATABASE_URL`. In Render's
+PostgreSQL dashboard, confirm a recent backup has completed and is retained
+for restore; if the URL points to Neon or another provider, create and verify
+that provider's backup/branch instead. Confirm `public.users` exists,
+the effective search path includes `public`, and no conflicting profile table
+exists in another schema. Inspect migration history first. The dedicated
+repair command below refuses a mismatched database name, a local target,
+missing `public.users`, an unexpected search path, an ambiguous profile table,
+an existing profile schema missing required core columns or constraints, or
+migration history that is not at the repair boundary. Missing payout fields
+are added by the follow-up migration. It takes the same advisory migration lock
+as the standard runner and applies only the two profile repair migrations, not
+the full manifest. If the standard `public.schema_migrations` ledger exists
+and contains the exact preceding
+57-migration prefix, the command validates and records checksums for the two
+repair migrations in the same transaction. If no ledger exists, it does not
+invent one. If history is inconsistent, stop and reconcile it rather than
+forcing the change.
+
+Run the command from Render's Shell in the `server` directory after confirming
+that `DATABASE_URL` points to the backed-up target and that `DATABASE_SSL_CA`
+is set when the endpoint uses a private CA. Replace `<database-name>` with the
+value returned by `current_database()` during the preflight. The URL and
+credentials are read from the service environment and are never printed:
+
+```sh
+npm run migrate:restore-wholesaler-profile -- --apply --database <database-name> --confirm-backup
+```
+
+This command is deliberately separate from startup. Do not configure the full
+migration runner or baseline as the production start command. The ordinary
+`npm run migrate` remains restricted to the local test database. The profile
+repair is transactional and repeat-safe:
+an already-correct profile table is verified without re-creating it, while an
+existing partial or conflicting schema causes an explicit refusal.
 
 Verify the new relation and its declared constraints before restarting the
 backend:
@@ -620,6 +661,11 @@ SELECT conname, contype, pg_get_constraintdef(oid)
 FROM pg_constraint
 WHERE conrelid = 'public.wholesaler_profiles'::regclass
 ORDER BY conname;
+
+SELECT indexname, indexdef
+FROM pg_indexes
+WHERE schemaname = 'public' AND tablename = 'wholesaler_profiles'
+ORDER BY indexname;
 ```
 
 If `public.users` is absent, do not apply the profile repair alone and do not

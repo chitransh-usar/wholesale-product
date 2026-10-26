@@ -11,7 +11,7 @@ const controllerPath = path.join(
   "productController.js",
 );
 
-function loadController(pool) {
+function loadController(pool, cityFilterFrom = () => null) {
   delete require.cache[controllerPath];
   const originalLoad = Module._load;
   Module._load = function (request, parent, isMain) {
@@ -29,11 +29,12 @@ function loadController(pool) {
         return {
           resolveCitySql: async (dbPool) => {
             await dbPool.query("SELECT column_name FROM information_schema.columns");
-            return { citySql: "NULL", cityKeySql: "NULL" };
+            return { citySql: "NULL", cityKeySql: "lower(NULL)" };
           },
-          cityFilterFrom: () => null,
+          cityFilterFrom,
         };
       }
+
     }
     return originalLoad.call(this, request, parent, isMain);
   };
@@ -58,6 +59,27 @@ function makeResponse() {
     },
   };
 }
+
+test("product catalogue parameterizes the normalized city filter", async () => {
+  const calls = [];
+  const controller = loadController(
+    {
+      async query(sql, params) {
+        calls.push({ sql, params });
+        return { rows: [] };
+      },
+    },
+    (query) => String(query.city || "").trim().toLowerCase() || null,
+  );
+  const response = makeResponse();
+
+  await controller.getPublicCatalog({ query: { city: "  Surat " } }, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, []);
+  assert.match(calls[1].sql, /AND lower\(NULL\) = \$1/);
+  assert.deepEqual(calls[1].params, ["surat"]);
+});
 
 for (const [name, handlerName] of [
   ["product catalogue", "getPublicCatalog"],

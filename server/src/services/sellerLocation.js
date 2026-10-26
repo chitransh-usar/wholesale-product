@@ -25,13 +25,14 @@
 // expression at runtime based on the schema rather than assuming every
 // migration has been applied.
 const citySqlFor = ({ hasWarehouseCity = true, hasLegacyCity = true } = {}) => {
-  if (!hasWarehouseCity && !hasLegacyCity) return "NULL";
-  if (hasWarehouseCity) {
+  if (hasWarehouseCity && hasLegacyCity) {
     return `COALESCE(
       NULLIF(btrim(wp.warehouse_city), ''),
       NULLIF(btrim(wp.city), '')
     )`;
   }
+  if (hasWarehouseCity) return `NULLIF(btrim(wp.warehouse_city), '')`;
+  if (!hasLegacyCity) return "NULL";
   return `NULLIF(btrim(wp.city), '')`;
 };
 
