@@ -25,10 +25,28 @@ function migrationChecksum(filename) {
   );
 }
 
-test("manifest classifies every SQL file into 57 included and 7 excluded", () => {
+test("manifest classifies every SQL file into 58 included and 7 excluded", () => {
   validateManifest();
-  assert.equal(MIGRATION_FILES.length, 57);
+  assert.equal(MIGRATION_FILES.length, 58);
   assert.equal(Object.keys(EXCLUDED_FILES).length, 7);
+});
+
+test("profile recovery migration is forward-only and matches the established schema", () => {
+  const filename = "wholesale3_restore_wholesaler_profiles.sql";
+  const sql = fs.readFileSync(path.join(__dirname, "..", "migrations", filename), "utf8");
+
+  assert.equal(MIGRATION_FILES.at(-1), filename);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.wholesaler_profiles/);
+  assert.match(sql, /CONSTRAINT wholesaler_profiles_pkey PRIMARY KEY \(id\)/);
+  assert.match(sql, /FOREIGN KEY \(user_id\) REFERENCES public\.users\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_wholesaler_razorpay_account/);
+  assert.doesNotMatch(sql, /DROP\s+(?:TABLE|COLUMN|CONSTRAINT)|\bINSERT\s+INTO\b/i);
+  assert.doesNotMatch(sql, /\bDO\s+\$\$/i);
+  assert.doesNotMatch(
+    sql.split(/\r?\n/).filter((line) => line.trim().startsWith("--")).join("\n"),
+    /;/,
+  );
+  assert.doesNotMatch(sql, /trust_score|response_rate|response_time/);
 });
 
 test("plan mode does not load the database module", async () => {

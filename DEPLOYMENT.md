@@ -35,7 +35,7 @@ files to local disk.
 
 ## Current approval status
 
-The 57-file plan has been applied and verified on the dedicated local
+The original 57-file plan has been applied and verified on the dedicated local
 `wholesale_marketplace_test` database running PostgreSQL 18.6. This does not
 approve production migrations or deployment. Production credentials previously
 shared in conversation must first be rotated and confirmed revoked. Neon was
@@ -281,8 +281,9 @@ guessing which files already ran.
   `enterprise_invoice_module.sql`; `wholesale3_sales_channels.sql` follows
   invoice numbering; `wholesale3_marketplace_linkages.sql` follows sales
   channels and the order/sale financial-year sequences.
-- `z_fix_order_payment_status_constraint.sql` remains last because it restores
-  the final order payment-status check after earlier migrations reshape it.
+- `z_fix_order_payment_status_constraint.sql` remains the final order
+  payment-status constraint migration. The narrowly scoped profile recovery
+  migration follows it and changes no order schema.
 
 Some included files update old rows or remove legacy constraints/sequence
 records. For a genuinely empty database, those data statements have no rows to
@@ -456,6 +457,7 @@ same list and checks that the files on disk still match it.
 55. `wholesale3_one_invoice_per_order.sql`
 56. `wholesale3_marketplace_linkages.sql`
 57. `z_fix_order_payment_status_constraint.sql`
+58. `wholesale3_restore_wholesaler_profiles.sql`
 
 ## Local migration command
 
@@ -535,23 +537,35 @@ PostgreSQL statement, or 9 seconds for a client-side query deadline. Check
 `/readyz` before interpreting an empty catalogue response. A healthy
 `/healthz` only means the HTTP process is running.
 
-### Diagnosing PostgreSQL `42P01` in catalogue endpoints
+### Diagnosing PostgreSQL `42P01` in catalogue and authentication
 
 The city resolver reads `information_schema.columns` for optional city
 columns. It does not issue SQL against `wholesaler_profiles` there. The
 catalogue queries subsequently reference `products`, `supplier_inventory`,
 `users`, and `wholesaler_profiles`; login uses `users`, while seller
 registration also inserts into `wholesaler_profiles`. The migration manifest
-includes `000_baseline.sql`, which defines these relations in `public`.
+includes `000_baseline.sql`, which defines these relations in `public`. The
+confirmed catalogue error names `public.wholesaler_profiles`. The login
+handler's credential query is `SELECT ... FROM users`; it does not reference
+`wholesaler_profiles`, so a login `42P01` from this code path concerns `users`.
+The reported login log omitted PostgreSQL's relation detail, so verify
+`public.users` in the connected database before attributing that error to a
+specific schema or database.
 
 After deploying, a PostgreSQL `42P01` log includes the structured relation
-and schema fields when the driver supplies them. If a target still reports a
-missing relation, first verify the Render service's `DATABASE_URL` points to
-the intended database without printing the URL. Then run these read-only
-queries in that database:
+and schema fields when the driver supplies them. First verify the Render
+service's `DATABASE_URL` points to the intended database without printing the
+URL. Do not disable TLS. Then run these read-only queries in that database:
 
 ```sql
 SELECT current_database(), current_schema(), current_setting('search_path');
+
+SELECT
+  to_regclass('public.users') AS public_users,
+  to_regclass('public.products') AS public_products,
+  to_regclass('public.supplier_inventory') AS public_supplier_inventory,
+  to_regclass('public.wholesaler_profiles') AS public_wholesaler_profiles,
+  to_regclass('public.schema_migrations') AS public_schema_migrations;
 
 SELECT table_schema, table_name
 FROM information_schema.tables
@@ -562,22 +576,57 @@ WHERE table_name IN (
 ORDER BY table_schema, table_name;
 ```
 
-If `schema_migrations` is present in `public`, inspect it with:
+If `schema_migrations` is present in `public`, inspect its columns first:
 
 ```sql
-SELECT filename, checksum, applied_at
-FROM public.schema_migrations
-ORDER BY applied_at, filename;
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'schema_migrations'
+ORDER BY ordinal_position;
 ```
 
-Compare results with the schema and migration history expected for that
-specific database. A missing base relation can mean migrations were not run,
-the service points to a different database, or the relation is outside the
-application's active `search_path`. Do not apply the fresh-database migration
-plan to an existing production database: this repository's runner is
-restricted to the local test database and refuses populated schemas without a
-valid migration ledger. Back up and review production schema/data before
-preparing any forward-only repair migration; do not drop or recreate tables.
+If the ledger has the expected `filename`, `checksum`, and `applied_at`
+columns, compare its rows with the migration manifest. A missing baseline
+record or database/schema mismatch is not established until these live checks
+have been made. The new
+`wholesale3_restore_wholesaler_profiles.sql` migration is a narrow
+forward-only repair based on the baseline and later profile migrations. It
+creates the table only if absent, inserts no users or profile rows, and relies
+on the existing `public.users(id)` key for its foreign key. It does not repair
+a missing `public.users` table or other missing baseline relations.
+
+Before applying it, create and verify a Neon backup/branch or another
+recoverable backup of the intended production database. Confirm `public.users`
+exists and the only missing required relation is `public.wholesaler_profiles`.
+Review the migration, then apply only that file through the provider's SQL
+editor or an approved production migration process. Do not run the full
+baseline or local migration runner against production. If your migration
+history records this migration, preserve its existing schema and recording
+conventions; do not manually fabricate a ledger entry. The local runner is
+restricted to the local test database.
+
+Verify the new relation and its declared constraints before restarting the
+backend:
+
+```sql
+SELECT to_regclass('public.wholesaler_profiles') AS wholesaler_profiles;
+
+SELECT column_name, data_type, is_nullable, column_default
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'wholesaler_profiles'
+ORDER BY ordinal_position;
+
+SELECT conname, contype, pg_get_constraintdef(oid)
+FROM pg_constraint
+WHERE conrelid = 'public.wholesaler_profiles'::regclass
+ORDER BY conname;
+```
+
+If `public.users` is absent, do not apply the profile repair alone and do not
+create an empty replacement `users` table. Diagnose the intended database and
+recover the correct user data/schema first. A missing base relation can mean
+migrations were not run, the service points to a different database, or the
+relation is outside the application's active `search_path`.
 
 After deployment, verify these public GET endpoints without sending credentials:
 
@@ -589,8 +638,9 @@ curl.exe -i https://<your-backend-origin>/api/products/cities
 ```
 
 Both catalogue endpoints should return JSON arrays when ready. An empty array
-is valid only after `/readyz` succeeds. Do not test registration with a real
-email address unless intentionally creating an account.
+is valid only after `/readyz` succeeds. Test login with a known test account
+and registration only with an intentionally disposable test identity. Do not
+test production registration with a real customer's email.
 
 ## Configure Vercel
 

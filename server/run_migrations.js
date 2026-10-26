@@ -60,6 +60,7 @@ const MIGRATION_FILES = [
   "wholesale3_one_invoice_per_order.sql",
   "wholesale3_marketplace_linkages.sql",
   "z_fix_order_payment_status_constraint.sql",
+  "wholesale3_restore_wholesaler_profiles.sql",
 ];
 
 const EXCLUDED_FILES = {

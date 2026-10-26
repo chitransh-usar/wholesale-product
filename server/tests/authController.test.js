@@ -251,6 +251,7 @@ test("login succeeds with normalized email and returns the existing response sha
     await controller.login({ body: { email: " ASHA@EXAMPLE.COM ", password: "a valid password" } }, response);
     assert.equal(response.statusCode, 200);
     assert.match(sql, /FROM users/);
+    assert.doesNotMatch(sql, /wholesaler_profiles/);
     assert.equal(parameters[0], "asha@example.com");
     assert.equal(response.body.user.email, "asha@example.com");
     assert.ok(response.body.token);

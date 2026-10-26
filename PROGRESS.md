@@ -17,9 +17,21 @@ The following is the current local deployment-preparation state. The older
 hand-run migration notes below describe previous development database work;
 they do not establish what is present in the new Neon database.
 
-- The migration runner has an explicit 57-file order and 7 explicit
+- The migration runner now has an explicit 58-file order and 7 explicit
   exclusions. Plan mode prints the full list and does not load the database
   module. `--apply` is required to request database changes.
+- Added the forward-only `wholesale3_restore_wholesaler_profiles.sql` repair
+  after repository review confirmed that `000_baseline.sql` defines the
+  missing relation, while no existing dedicated migration creates it. The
+  repair follows the baseline and later profile migrations and preserves the
+  documented primary key, nullable user foreign key, and Razorpay uniqueness
+  rule. It inserts no rows and drops nothing. It has not been applied to
+  Render. The login query reads `users`, not `wholesaler_profiles`; the login
+  log omitted relation detail, and production `public.users`, `DATABASE_URL`,
+  and migration history remain unverified.
+- The earlier local replay verified 57 migrations before this repair was
+  added. The expanded manifest and new repair have not yet been replayed
+  against a disposable/local database.
 - All 57 included migrations were applied to the explicitly configured local
   `wholesale_marketplace_test` PostgreSQL 18.6 database on 23 Oct 2026. No
   remote database was contacted.
