@@ -33,6 +33,7 @@ const routeRoutes = require("./routes/routeRoutes");
 const webhookRoutes = require("./routes/webhookRoutes");
 const marketplaceAccountRoutes = require("./routes/marketplaceAccountRoutes");
 const corsOrigin = require("./config/corsOrigin");
+const { logDatabaseError } = require("./utils/databaseError");
 
 const app = express();
 
@@ -47,10 +48,7 @@ app.get("/readyz", async (_req, res) => {
     await pool.query("SELECT 1");
     res.status(200).json({ status: "ready" });
   } catch (error) {
-    console.error(
-      "Database readiness check failed:",
-      error.code || error.name || "unknown error",
-    );
+    logDatabaseError("Database readiness check", error);
     res.status(503).json({ status: "unavailable" });
   }
 });

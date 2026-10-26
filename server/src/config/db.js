@@ -1,6 +1,7 @@
 const { Pool } = require("pg");
 require("dotenv").config();
 const buildDatabaseConfig = require("./databaseConfig");
+const { logDatabaseError } = require("../utils/databaseError");
 
 const pool = new Pool(
   buildDatabaseConfig(
@@ -10,10 +11,7 @@ const pool = new Pool(
 );
 
 pool.on("error", (error) => {
-  console.error(
-    "Unexpected PostgreSQL pool error:",
-    error.code || error.name || "unknown error",
-  );
+  logDatabaseError("Unexpected PostgreSQL pool error", error);
 });
 
 module.exports = pool;

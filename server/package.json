@@ -7,6 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "migrate": "node run_migrations.js",
+    "migrate:neon": "node scripts/migrate_neon.js",
     "migrate:restore-wholesaler-profile": "node scripts/restore_wholesaler_profiles.js",
     "smoke": "node scripts/smoke.js"
   },

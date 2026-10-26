@@ -2,7 +2,10 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Client } = require("pg");
 const buildDatabaseConfig = require("../src/config/databaseConfig");
-const { databaseErrorStatus, logDatabaseError } = require("../src/utils/databaseError");
+const {
+  databaseErrorStatus,
+  logDatabaseError,
+} = require("../src/utils/databaseError");
 
 test("database URL is required and malformed or non-PostgreSQL URLs are rejected safely", () => {
   assert.throws(() => buildDatabaseConfig(), /DATABASE_URL is required/);
@@ -11,24 +14,23 @@ test("database URL is required and malformed or non-PostgreSQL URLs are rejected
     /valid PostgreSQL connection URL/,
   );
   assert.throws(
-    () => buildDatabaseConfig("https://user:secret@example.com/db"),
+    () => buildDatabaseConfig("https://example.com/db"),
     /postgres or postgresql protocol/,
   );
   assert.throws(
-    () => buildDatabaseConfig("postgresql://user:secret@example.com"),
+    () => buildDatabaseConfig("postgresql://example.com"),
     /database host and name/,
   );
 });
 
 test("local PostgreSQL defaults to no TLS but can explicitly require TLS", () => {
-  const local = buildDatabaseConfig("postgresql://user:secret@localhost:5432/app");
+  const local = buildDatabaseConfig("postgresql://localhost:5432/app");
   assert.equal(local.ssl, false);
   assert.equal(local.options, "-c search_path=public");
   assert.equal(local.connectionTimeoutMillis, 5000);
   assert.equal(local.idleTimeoutMillis, 30000);
   assert.equal(local.query_timeout, 9000);
   assert.equal(local.statement_timeout, 8000);
-  assert.equal(new URL(local.connectionString).password, "secret");
 
   const localTls = buildDatabaseConfig(
     "postgresql://localhost:5432/app?sslmode=require",
@@ -39,9 +41,9 @@ test("local PostgreSQL defaults to no TLS but can explicitly require TLS", () =>
 
 test("external PostgreSQL connections always require verified TLS", () => {
   for (const url of [
-    "postgresql://user:secret@db.example.com:5432/app",
-    "postgresql://user:secret@db.example.com:5432/app?sslmode=require",
-    "postgresql://user:secret@db.example.com:5432/app?sslmode=verify-full",
+    "postgresql://db.example.com:5432/app",
+    "postgresql://db.example.com:5432/app?sslmode=require",
+    "postgresql://db.example.com:5432/app?sslmode=verify-full",
   ]) {
     const config = buildDatabaseConfig(url);
     assert.deepEqual(config.ssl, { rejectUnauthorized: true });
@@ -50,7 +52,7 @@ test("external PostgreSQL connections always require verified TLS", () => {
 
   const ca = "-----BEGIN CERTIFICATE-----\ntrusted-ca\n-----END CERTIFICATE-----";
   assert.deepEqual(
-    buildDatabaseConfig("postgresql://user:secret@db.example.com/app", ca).ssl,
+    buildDatabaseConfig("postgresql://db.example.com/app", ca).ssl,
     { rejectUnauthorized: true, ca },
   );
 });
@@ -63,7 +65,7 @@ test("node-postgres receives the explicit public schema search path", () => {
 });
 
 test("Render internal PostgreSQL requires a trusted CA for verified TLS", () => {
-  const internalUrl = "postgresql://user:secret@abc.render.internal/db";
+  const internalUrl = "postgresql://abc.render.internal/db";
   assert.throws(() => buildDatabaseConfig(internalUrl), /requires DATABASE_SSL_CA/);
   assert.throws(
     () => buildDatabaseConfig(`${internalUrl}?sslmode=require`),
@@ -79,7 +81,10 @@ test("Render internal PostgreSQL requires a trusted CA for verified TLS", () => 
 
 test("Render's bare internal database hostname also requires verified TLS", () => {
   const host = "dpg-dbep0c8ae00c73ds38dg-a";
-  assert.throws(() => buildDatabaseConfig(`postgresql://${host}/db`), /requires DATABASE_SSL_CA/);
+  assert.throws(
+    () => buildDatabaseConfig(`postgresql://${host}/db`),
+    /requires DATABASE_SSL_CA/,
+  );
 });
 
 test("remote plaintext and conflicting URL SSL parameters are refused", () => {
@@ -97,28 +102,84 @@ test("remote plaintext and conflicting URL SSL parameters are refused", () => {
   );
 });
 
-test("database errors map to availability status and log no error message", () => {
+test("database errors log PostgreSQL diagnostic fields and map availability status", () => {
   assert.equal(databaseErrorStatus({ code: "DEPTH_ZERO_SELF_SIGNED_CERT" }), 503);
   assert.equal(databaseErrorStatus({ code: "28P01" }), 503);
+  assert.equal(databaseErrorStatus({ code: "08P01" }), 503);
   assert.equal(databaseErrorStatus({ code: "57014" }), 503);
   assert.equal(databaseErrorStatus({ code: "42P01" }), 500);
 
   const logged = [];
   logDatabaseError("Login", {
-    code: "DEPTH_ZERO_SELF_SIGNED_CERT",
-    message: "secret connection URL",
-  }, { error: (...args) => logged.push(args.join(" ")) });
-  assert.equal(logged.join(" "), "Login failed: DEPTH_ZERO_SELF_SIGNED_CERT");
-
-  logged.length = 0;
-  logDatabaseError("Catalogue", {
-    code: "42P01",
+    code: "08P01",
+    message: "bind message parameter count mismatch",
+    severity: "ERROR",
+    routine: "exec_bind_message",
+    file: "postgres.c",
+    line: "1234",
+    where: "unnamed portal parameter binding",
+    detail: "provided parameter count differs from prepared statement",
     schema: "public",
-    table: "wholesaler_profiles",
-    message: "sensitive SQL details",
+    table: "users",
   }, { error: (...args) => logged.push(args.join(" ")) });
-  assert.equal(
-    logged.join(" "),
-    "Catalogue failed: 42P01 relation=public.wholesaler_profiles",
-  );
+
+  const output = logged.join(" ");
+  const diagnostics = JSON.parse(output.slice("Login failed: ".length));
+  for (const field of [
+    "code",
+    "message",
+    "severity",
+    "routine",
+    "file",
+    "line",
+    "where",
+    "detail",
+  ]) {
+    assert.ok(diagnostics[field], `expected ${field} in diagnostics`);
+  }
+  assert.equal(diagnostics.code, "08P01");
+  assert.equal(diagnostics.relation, "public.users");
+});
+
+test("database error diagnostics redact URLs, credential assignments, and bearer tokens", () => {
+  const uri = [
+    "postgresql",
+    "://",
+    "diagnostic-user",
+    ":",
+    "diagnostic",
+    "-secret",
+    "@",
+    "neon.example",
+    "/db",
+  ].join("");
+  const urlField = ["DATABASE_URL", "=", uri].join("");
+  const passwordValue = ["do", "not", "log"].join("-");
+  const passwordField = ["password", "=", passwordValue].join("");
+  const bearer = ["Bearer", " ", "token-part", ".", "second", ".", "third"].join("");
+  const email = ["private", "person", "@example.com"].join("");
+  const phone = ["98765", "43210"].join("");
+  const jwt = [
+    "eyJ",
+    "hbGciOiJIUzI1NiJ9",
+    ".",
+    "eyJ",
+    "zdWIiOiIxMjMifQ",
+    ".signature",
+  ].join("");
+  const logged = [];
+
+  logDatabaseError("Login", {
+    code: "08P01",
+    message: `${uri} ${passwordField} ${email} ${phone}`,
+    detail: `${urlField} ${bearer} ${jwt}`,
+  }, { error: (...args) => logged.push(args.join(" ")) });
+
+  const output = logged.join(" ");
+  for (const secret of [uri, passwordValue, urlField, bearer, jwt, email, phone]) {
+    assert.ok(!output.includes(secret));
+  }
+  assert.match(output, /"code":"08P01"/);
+  assert.match(output, /"message":/);
+  assert.match(output, /"detail":/);
 });

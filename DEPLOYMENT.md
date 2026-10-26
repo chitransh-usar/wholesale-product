@@ -35,17 +35,16 @@ files to local disk.
 
 ## Current approval status
 
-The original 57-file plan has been applied and verified on the dedicated local
+The current 59-file plan has been applied and verified on the dedicated local
 `wholesale_marketplace_test` database running PostgreSQL 18.6. This does not
 approve production migrations or deployment. Production credentials previously
 shared in conversation must first be rotated and confirmed revoked. Neon was
 not contacted.
 
 The current runner is deliberately restricted to `server/.env.test`,
-`wholesale_marketplace_test`, a local host, and port 5432. It will not run
-migrations against Neon. Do not point `.env.test` at a hosted database or try
-to bypass this guard. A separately reviewed production migration workflow is
-still required.
+`wholesale_marketplace_test`, a local host, and port 5432. The separate
+`migrate:neon` command below is required for a consciously approved Neon apply.
+Do not point `.env.test` at a hosted database or bypass the local runner guard.
 
 ### Latest local schema audit, 23 October 2026
 
@@ -53,7 +52,7 @@ The read-only audit connected only to `wholesale_marketplace_test` at
 `127.0.0.1:5432` and confirmed `transaction_read_only=on`. It found 78 ordinary
 tables, 28 sequences, 244 indexes, and 982 columns. There were no views,
 materialized views, partitioned tables, or foreign tables. A static scan found
-77 unique `CREATE TABLE` declarations in the 57 included migrations, all
+77 unique `CREATE TABLE` declarations in the 59 included migrations, all
 present in the database. The remaining table is the runner's
 `schema_migrations` ledger.
 
@@ -70,14 +69,80 @@ user triggers were enabled and matched the migration declarations. The six
 application functions matched their declarations. No domain, enum, range, or
 multirange types were found in `public`. `pgcrypto` version 1.4 is installed.
 
-The ledger has exactly 57 ordered entries with matching current file
-checksums, and its three columns and primary key match the runner's expected
-shape. The catalog query retrieved all column types, nullability, defaults,
-identity, and generated-column metadata. This audit did not produce an
-exhaustive normalized, column-by-column diff against every `ALTER TABLE` in
-the migration set, nor a separate anti-join for every foreign key. Treat the
-local schema as a conditional pass, not as evidence that a hosted staging
-database has the same schema or permissions.
+At the time of the 23 October audit, the ledger had exactly 57 ordered entries
+with matching checksums. The two profile-recovery migrations were added later
+and were applied to the local test database on 26 October, bringing its
+current ledger to 59. The original catalog query retrieved column types,
+nullability, defaults, identity, and generated-column metadata. It did not
+produce an exhaustive normalized, column-by-column diff against every
+`ALTER TABLE` in the migration set, nor a separate anti-join for every foreign
+key. Treat the local schema as a conditional pass, not as evidence that a
+hosted database has the same schema or permissions.
+
+### Repository database inventory
+
+The SQL migration set is the schema source of truth. There is no ORM model
+layer. `000_baseline.sql` is the structure-only baseline; the explicit
+59-entry manifest in `server/run_migrations.js` adds later columns, keys,
+indexes, triggers, and functions. `marketplace_schema.sql` is a byte-identical
+duplicate baseline and is excluded. The migration set declares 77 distinct
+application tables:
+
+```text
+coupon_usage, coupons, credit_account_audit, credit_note_items,
+credit_note_sequences, credit_notes, credit_transactions,
+delivery_challan_items, delivery_challan_sequences, delivery_challans,
+device_tokens, flash_sale_products, flash_sales, gift_card_transactions,
+gift_cards, imports, inventory_forecasts, inventory_log, invoice_items,
+invoice_logs, invoice_sequences, invoice_settings, invoices, items,
+loyalty_accounts, loyalty_transactions, marketplace_linkages, master_hsn,
+master_settings, master_states, master_tax_rates, master_tax_terms,
+master_units, master_uqc, messages, notification_logs,
+notification_preferences, notifications, order_analytics, order_items,
+order_sequences, order_status_history, orders, parties, party_payments,
+payment_transactions, payments, product_reviews, products, purchase_lines,
+purchase_sequences, purchases, razorpay_transfers, razorpay_webhook_events,
+referral_rewards, referrals, return_requests, review_helpful_votes,
+review_images, review_replies, review_reports, reviews, sale_lines,
+sale_sequences, sales, seller_reviews, shipment_checkpoints,
+shipment_tracking_links, shipments, staff_members, stock_ledger,
+supplier_inventory, supplier_payments, suppliers, users,
+wholesaler_profiles, wishlist_notifications
+```
+
+Feature ownership is visible in the migration names and SQL: users, seller
+profiles, staff and device tokens support identity; products, `items`,
+`supplier_inventory`, inventory history/forecasting and master tables support
+catalogue and inventory; orders, order items, shipments, returns, payments,
+Razorpay records and status history support marketplace fulfilment; invoices,
+invoice items/logs/settings/sequences support billing; parties, sales,
+purchases, credit entries/notes, supplier payments, challans and the stock
+ledger support the wholesaler books; notifications, messages, promotions,
+loyalty, referrals and reviews support engagement. The migrations define six
+application functions and seven user triggers in the audited local schema.
+No application enum types or views were found in the migration declarations.
+The locally audited functions are `generate_order_number`,
+`sync_order_status_history_legacy`, `sync_payment_transactions_legacy`,
+`trigger_generate_order_number`, `trigger_update_updated_at`, and
+`validate_order_status_transition`. The locally audited triggers are
+`trg_generate_order_number`, `trg_order_status_history_legacy`,
+`trg_payment_transactions_legacy`, `trg_update_invoices_updated_at`,
+`trg_update_order_analytics_updated_at`, `trg_update_orders_updated_at`, and
+`trg_update_return_requests_updated_at`.
+
+The baseline and later SQL define the exact columns, types, defaults,
+nullability, keys, foreign keys, checks, and indexes. The latest documented
+local audit found 982 columns, 98 foreign keys, 76 primary keys, 19 unique
+constraints, 76 check constraints, 28 sequences, and 244 indexes. These are
+local-database observations, not claims about Neon. Use
+`server/inspect_full_schema.sql` against the intended target to inspect its
+catalog before claiming that its schema matches this inventory.
+
+Do not use `server/scripts/dump_schema.js` as a complete database export. It
+writes directly to `server/migrations/000_baseline.sql` and does not serialize
+all the application's functions, triggers, types, or policies. Use the
+version-controlled migration manifest for a fresh schema, or `pg_dump` for a
+full source database transfer.
 
 ## Important readiness and security findings
 
@@ -354,14 +419,16 @@ installed it. Neon support and permissions remain unverified.
 
 ### Disposable migration test procedure
 
-The local test has been performed on 2026-10-23:
+The initial local test was performed on 2026-10-23. The final two reviewed
+profile-recovery migrations were applied on 2026-10-26:
 
 - Before applying, the configured URL was confirmed locally as
   `127.0.0.1:5432/wholesale_marketplace_test`. A live read-only identity query
   confirmed the actual database and server address. The runner's exact
   baseline preflight found no public-schema objects.
-- The runner applied all 57 included migrations in manifest order. It records
-  checksums in `public.schema_migrations` and confirmed all 57 were recorded.
+- On 23 October, the runner applied the then-current 57-migration manifest.
+  On 26 October, it applied the two added profile recovery migrations. The
+  current local ledger records all 59 migrations with checksums.
 - A separate read-only verification validated the exact manifest prefix and
   all checksums, confirmed `pgcrypto` is installed, and found no user or order
   rows. The resulting public schema contains 78 tables, including the runner
@@ -465,8 +532,7 @@ same list and checks that the files on disk still match it.
 The runner is never called by application startup. It defaults to plan-only.
 Its apply mode is restricted to `server/.env.test`, which overrides any
 inherited `DATABASE_URL` and is validated as local
-`wholesale_marketplace_test` on port 5432. It is not a Neon migration tool in
-its current form.
+`wholesale_marketplace_test` on port 5432.
 
 For the already-migrated local test database, run:
 
@@ -482,9 +548,76 @@ is:
 npm.cmd run migrate -- --apply
 ```
 
-There is no supported Neon apply command in this runner revision. Do not
-configure `.env.test` with a Neon URL or use `--apply` against Neon. A separate
-production-target design, review, and approval are required.
+Do not configure `.env.test` with a Neon URL or use the local `migrate`
+command against Neon.
+
+## Explicit Neon migration command
+
+`migrate:neon` reuses the same 59-file manifest, checksum verification,
+ordered history-prefix checks, baseline-empty-schema preflight, per-file
+transactions, and advisory lock as the local runner. It requires a direct
+Neon hostname, an exact expected database name and endpoint hostname, explicit
+backup confirmation, and the `NEON_MIGRATION_DATABASE_URL` environment
+variable. It does not run at startup. It refuses a Neon pooler endpoint, an
+unexpected connected database or schema, an incompatible history ledger, or
+an untracked/non-empty public schema when starting from baseline.
+
+First create a recoverable Neon branch or backup and confirm the target is the
+intended project, endpoint, and database. Preview the order without opening a
+database connection:
+
+```powershell
+Set-Location 'C:\Users\Chitransh Koshta\wholesale-product\server'
+npm.cmd run migrate:neon -- --plan
+```
+
+For a newly created, empty Neon database with no data to import, provide the
+direct endpoint URL in `NEON_MIGRATION_DATABASE_URL` through a secure shell
+environment, then apply with both database and endpoint confirmations:
+
+```powershell
+npm.cmd run migrate:neon -- --apply --database <database-name> --endpoint <direct-neon-hostname> --confirm-backup yes
+```
+
+The endpoint argument is the hostname only, for example the `ep-...neon.tech`
+host shown by Neon, not the URL or credentials. `--database` must match the
+database path in the URL and the live `current_database()` result. A backup
+must already exist and be restorable before confirming. Run this from a
+trusted operator machine or temporary secure migration environment, not
+Vercel, and remove the migration URL from that environment after completion.
+The command reports migration names and PostgreSQL diagnostics without
+printing the connection URL. A failed migration rolls back that migration and
+its ledger entry, stops immediately, and must be reviewed before retrying.
+
+The full manifest includes some legacy normalization/backfill statements
+documented above. Use it for an empty database only, unless a database has a
+valid exact-prefix `schema_migrations` ledger and each pending data-changing
+migration has been reviewed for the target's existing rows. The command does
+not infer migration history from the presence of tables. Never create ledger
+rows by hand to make an existing schema appear migrated.
+
+If a source database contains data to preserve, do not run the fresh baseline
+plan over it. Back up both source and target, create an empty Neon database,
+and copy a complete custom-format dump, including schema, data, and sequence
+state. Use the direct Neon endpoint and prevent restore from dropping anything:
+
+```powershell
+pg_dump --format=custom --no-owner --no-acl --file .\wholesale-source.dump --dbname $env:SOURCE_DATABASE_URL
+pg_restore --exit-on-error --no-owner --no-acl --dbname $env:NEON_MIGRATION_DATABASE_URL .\wholesale-source.dump
+```
+
+Only run `pg_restore` against a verified empty target. Do not add `--clean` or
+`--create`. This transfers the source database's schema and its own
+`schema_migrations` table, if present. Afterward compare its migration
+history and checksums with the repository, then audit columns, constraints,
+indexes, functions, triggers, sequences, extensions, and row counts. If the
+source has no compatible migration ledger or differs from the repository
+migration history, stop for a separately reviewed schema reconciliation; do
+not try the full manifest against the restored data automatically. Keep the
+dump in restricted storage and securely remove it according to the
+data-retention policy after verification. Since `--no-owner --no-acl` omits
+source role ownership and grants, create the least-privilege Neon application
+role and grant only the required schema/table/sequence permissions separately.
 
 Do not paste migration files one at a time in pgAdmin if you also intend to use
 the runner. That bypasses the history/checksum record and can leave the runner
@@ -512,7 +645,8 @@ Set secrets and server variables in the host dashboard, not in Vercel:
 
 | Variable | Required? | Purpose |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL URL for the application. Keep it server-only. When using Render PostgreSQL, use its Internal Database URL only when the services are in compatible regions; otherwise use the provider's external URL and documented TLS settings. External hosts require verified TLS. The pool uses at most 10 connections per backend process. |
+| `DATABASE_URL` | Yes | PostgreSQL URL for application traffic. Keep it server-only. For Neon, use the intended project/database; a pooled endpoint can be used for app traffic if required. Remote TLS is verified. The pool uses at most 10 connections per backend process. |
+| `NEON_MIGRATION_DATABASE_URL` | Only during Neon migrations | Direct, unpooled Neon URL used only by `migrate:neon`. Supply it through a private environment variable, never in source, Vercel variables, or logs. |
 | `DATABASE_SSL_CA` | Conditional | Trusted PEM CA certificate for a private or self-signed PostgreSQL endpoint, including Render internal hosts when their certificate is not publicly trusted. Remote TLS verification is never disabled. |
 | `JWT_SECRET` | Yes | Secret used to sign and verify sessions. Rotate the previously shared value. |
 | `CLIENT_URL` | Yes in production | Exact Vercel origin, or a comma-separated list of exact allowed origins. No paths or wildcard. |

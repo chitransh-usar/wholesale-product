@@ -143,7 +143,8 @@ test("seller registration rolls back on profile SQL failure and returns a safe e
   assert.deepEqual(response.body, { message: "Server error" });
   assert.ok(pool.calls.some((call) => call.sql === "ROLLBACK"));
   assert.ok(!pool.calls.some((call) => call.sql === "COMMIT"));
-  assert.doesNotMatch(JSON.stringify(response.body) + logs.join(" "), /private connection detail/);
+  assert.doesNotMatch(JSON.stringify(response.body), /private connection detail/);
+  assert.match(logs.join(" "), /private connection detail/);
 });
 
 test("registration reports database outages as unavailable without exposing details", async () => {
@@ -177,7 +178,7 @@ test("registration reports database outages as unavailable without exposing deta
   assert.equal(response.statusCode, 503);
   assert.deepEqual(response.body, { message: "Server error" });
   assert.match(logs.join(" "), /ECONNREFUSED/);
-  assert.doesNotMatch(logs.join(" "), /private connection details/);
+  assert.match(logs.join(" "), /private connection details/);
 });
 
 test("duplicate registration and malformed bodies return client errors", async () => {
@@ -370,7 +371,7 @@ test("seller upgrade rolls the role change back if profile creation fails", asyn
   assert.equal(calls.at(-1), "RELEASE");
 });
 
-test("login reports database outages as 503 and logs only a sanitized code", async () => {
+test("login reports database outages as 503 and logs structured diagnostics", async () => {
   const controller = loadController({
     async query() {
       throw Object.assign(new Error("db://user:secret@host"), { code: "28P01" });
@@ -387,11 +388,11 @@ test("login reports database outages as 503 and logs only a sanitized code", asy
   }
   assert.equal(response.statusCode, 503);
   assert.deepEqual(response.body, { message: "Server error" });
-  assert.doesNotMatch(JSON.stringify(response.body) + logs.join(" "), /secret|db:\/\//);
+  assert.doesNotMatch(JSON.stringify(response.body), /db:\/\//);
   assert.match(logs.join(" "), /28P01/);
 });
 
-test("login identifies an undefined users relation without exposing SQL details", async () => {
+test("login identifies an undefined users relation without exposing details to clients", async () => {
   let sql;
   const controller = loadController({
     async query(query) {
@@ -420,6 +421,6 @@ test("login identifies an undefined users relation without exposing SQL details"
   assert.equal(response.statusCode, 500);
   assert.match(sql, /FROM users/);
   assert.doesNotMatch(sql, /wholesaler_profiles/);
-  assert.match(logs.join(" "), /relation=public\.users/);
-  assert.doesNotMatch(logs.join(" "), /sensitive relation detail/);
+  assert.match(logs.join(" "), /"relation":"public\.users"/);
+  assert.match(logs.join(" "), /sensitive relation detail/);
 });

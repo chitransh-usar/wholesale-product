@@ -724,6 +724,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  BASELINE_FILE,
+  HISTORY_TABLE,
   LOCK_ID,
   MIGRATION_FILES,
   EXCLUDED_FILES,
@@ -737,6 +739,7 @@ module.exports = {
   main,
   parseTestDatabaseUrl,
   printPlan,
+  removeOuterTransaction,
   validateHistoryRows,
   validateManifest,
 };

@@ -11,6 +11,39 @@ Newest first. Dates are when the work landed on `claude/wholesale-3.0`.
 
 ---
 
+## Neon migration preparation and PostgreSQL diagnostics, 26 October 2026
+
+- Added `npm run migrate:neon`, a separate explicit migration command for
+  operators. It uses the existing ordered 59-file manifest and checksum
+  ledger, requires the direct Neon hostname, expected database name, backup
+  confirmation, verified TLS, an advisory lock, and one transaction per file.
+  It refuses pooled endpoints and mismatched targets. It is not run at server
+  startup.
+- The Neon command has only been validated with a mocked pool and plan mode.
+  No Neon endpoint was contacted and no hosted database was changed.
+- Expanded `server/inspect_full_schema.sql` to inspect columns, constraints,
+  indexes and validity, sequences and ownership, views, functions,
+  extensions, user triggers, and row-security policies.
+- Documented the repository's SQL migration inventory and separate
+  fresh-schema versus complete-dump/data-preservation procedures in
+  `DEPLOYMENT.md`. The 77 declared application tables and prior catalog
+  counts are static/local observations. Neon object counts remain unknown.
+- Login uses a single parameterized `SELECT` against `users`; `pg` resolves to
+  8.22.0. The reported production `08P01` still cannot be attributed to a
+  specific protocol/configuration cause because the old logs omitted the
+  message and PostgreSQL diagnostic fields. Login, readiness, and pool errors
+  now log structured database diagnostics with URL, credential, email, phone,
+  bearer-token, and JWT-shaped values redacted.
+- No source database was connected to, and no production records or schema
+  were imported or modified. Source data retention requirements and Neon
+  target contents still require operator verification.
+- Final backend suite passed 78/78. Neon migration plan mode and JavaScript
+  syntax checks passed. The frontend production build passed when supplied its
+  required public `VITE_API_BASE_URL`; ESLint reports 40 errors across 22
+  untouched frontend files. A local read-only execution of the expanded
+  catalog inspection SQL did not complete and was stopped, so that SQL has
+  not been live-validated. No production or Neon database was contacted.
+
 ## Deployment readiness, local review
 
 The following is the current local deployment-preparation state. The older

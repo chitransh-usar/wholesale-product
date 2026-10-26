@@ -109,11 +109,12 @@ for (const [name, handlerName] of [
 
     assert.equal(response.statusCode, 503);
     assert.equal(typeof response.body.message, "string");
-    assert.doesNotMatch(JSON.stringify(response.body) + logs.join(" "), /database URL/);
+    assert.doesNotMatch(JSON.stringify(response.body), /database URL/);
+    assert.match(logs.join(" "), /database URL must not be exposed/);
     assert.match(logs.join(" "), /ECONNREFUSED/);
   });
 
-  test(`${name} reports a missing PostgreSQL relation without leaking error details`, async () => {
+  test(`${name} reports a missing PostgreSQL relation without exposing details to clients`, async () => {
     let queryCount = 0;
     const queries = [];
     const controller = loadController({
@@ -143,12 +144,10 @@ for (const [name, handlerName] of [
     }
 
     assert.equal(response.statusCode, 500);
-    assert.doesNotMatch(
-      JSON.stringify(response.body) + logs.join(" "),
-      /relation details must not be exposed/,
-    );
+    assert.doesNotMatch(JSON.stringify(response.body), /relation details/);
     assert.match(logs.join(" "), /42P01/);
-    assert.match(logs.join(" "), /relation=public\.wholesaler_profiles/);
+    assert.match(logs.join(" "), /relation details must not be exposed/);
+    assert.match(logs.join(" "), /"relation":"public\.wholesaler_profiles"/);
     assert.match(queries[0], /information_schema\.columns/);
     assert.match(queries[1], /supplier_inventory/);
     assert.match(queries[1], /JOIN users/);
