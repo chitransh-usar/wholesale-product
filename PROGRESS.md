@@ -11,6 +11,24 @@ Newest first. Dates are when the work landed on `claude/wholesale-3.0`.
 
 ---
 
+## Removing unsupported Neon pool startup option, 26 October 2026
+
+- The application pool configuration had been sending
+  `options: "-c search_path=public"` on every connection. Neon pooled
+  endpoints reject that startup parameter with SQLSTATE `08P01`.
+- Removed the custom startup option. Added a configuration guard for URL
+  `options` parameters that set `search_path`, including URL-encoded and
+  repeated options. Existing connection-pool settings and verified TLS remain
+  unchanged.
+- Confirmed no other active pool configuration sets the startup option.
+  Remaining `search_path` references are read-only checks, tests, or
+  diagnostics. No query changes were needed: PostgreSQL's default search path
+  includes `public`, and application migrations create tables there.
+- The database configuration test passed, and the complete backend suite
+  passed 79/79. The frontend production build passed with the required
+  `VITE_API_BASE_URL`. Frontend lint still reports 40 existing errors and 5
+  warnings in untouched files. No Neon or production database was contacted.
+
 ## Neon migration preparation and PostgreSQL diagnostics, 26 October 2026
 
 - Added `npm run migrate:neon`, a separate explicit migration command for
@@ -66,7 +84,8 @@ they do not establish what is present in the new Neon database.
 - Remote PostgreSQL TLS now always verifies certificates, including Render
   internal hosts. Configure `DATABASE_SSL_CA` with a trusted CA for a private
   internal endpoint, or use the provider's externally trusted endpoint. The
-  application also pins the connection search path to `public`.
+  application relies on PostgreSQL's default search path, which includes
+  `public`, rather than sending a startup parameter.
 - Seller upgrade now commits the users role update and profile insert in one
   transaction so a missing profile table cannot leave a half-upgraded account.
 - The guarded local migration runner applied migration 59

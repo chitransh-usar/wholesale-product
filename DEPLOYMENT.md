@@ -667,11 +667,17 @@ The backend binds to the platform-provided port. Startup rejects a missing
 PostgreSQL pool. `/healthz` is a liveness check; `/readyz` returns a failure
 response when PostgreSQL is unavailable.
 
-The pool sets the active PostgreSQL search path to `public`, verifies TLS for
-all remote connections, and gives up after 5 seconds waiting for a connection,
-8 seconds for a PostgreSQL statement, or 9 seconds for a client-side query
-deadline. Check `/readyz` before interpreting an empty catalogue response. A
-healthy `/healthz` only means the HTTP process is running.
+The pool does not send a PostgreSQL startup `options` parameter. This is
+required for Neon pooled connections, which reject `search_path` in startup
+options. PostgreSQL's default search path includes `public`, where the
+application migrations create the tables. Do not add `options=-c
+search_path=public` (including a URL-encoded equivalent) to `DATABASE_URL`;
+the server rejects such a URL with an actionable configuration error.
+Remote TLS remains verified. The pool gives up after 5 seconds waiting for a
+connection, 8 seconds for a PostgreSQL statement, or 9 seconds for a
+client-side query deadline. Check `/readyz` before interpreting an empty
+catalogue response. A healthy `/healthz` only means the HTTP process is
+running.
 
 ### Diagnosing PostgreSQL `42P01` in catalogue and authentication
 

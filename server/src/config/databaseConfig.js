@@ -27,6 +27,13 @@ function buildDatabaseConfig(databaseUrl, caCertificate) {
   const isRenderInternal =
     host.endsWith(".render.internal") || /^dpg-[a-z0-9]+-[a-z]$/.test(host);
   const sslMode = parsedUrl.searchParams.get("sslmode")?.toLowerCase();
+  const urlOptions = parsedUrl.searchParams.getAll("options");
+
+  if (urlOptions.some((options) => /\bsearch_path\s*=/i.test(options))) {
+    throw new Error(
+      "DATABASE_URL must not set search_path through the options parameter. Neon pooled connections reject this startup parameter.",
+    );
+  }
 
   if (sslMode && !SSL_MODES.has(sslMode)) {
     throw new Error(
@@ -66,7 +73,6 @@ function buildDatabaseConfig(databaseUrl, caCertificate) {
   return {
     connectionString: parsedUrl.toString(),
     ssl,
-    options: "-c search_path=public",
     connectionTimeoutMillis: 5000,
     idleTimeoutMillis: 30000,
     query_timeout: 9000,

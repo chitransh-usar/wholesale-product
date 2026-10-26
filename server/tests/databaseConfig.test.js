@@ -26,7 +26,7 @@ test("database URL is required and malformed or non-PostgreSQL URLs are rejected
 test("local PostgreSQL defaults to no TLS but can explicitly require TLS", () => {
   const local = buildDatabaseConfig("postgresql://localhost:5432/app");
   assert.equal(local.ssl, false);
-  assert.equal(local.options, "-c search_path=public");
+  assert.equal(Object.hasOwn(local, "options"), false);
   assert.equal(local.connectionTimeoutMillis, 5000);
   assert.equal(local.idleTimeoutMillis, 30000);
   assert.equal(local.query_timeout, 9000);
@@ -57,11 +57,27 @@ test("external PostgreSQL connections always require verified TLS", () => {
   );
 });
 
-test("node-postgres receives the explicit public schema search path", () => {
-  const config = buildDatabaseConfig("postgresql://db.example.com/app");
+test("Neon pooled connections do not receive a search_path startup option", () => {
+  const config = buildDatabaseConfig(
+    "postgresql://app-user@ep-example-pooler.neon.tech/app",
+  );
   const client = new Client(config);
 
-  assert.equal(client.connectionParameters.options, "-c search_path=public");
+  assert.equal(client.connectionParameters.options, undefined);
+  assert.doesNotMatch(config.connectionString, /(?:^|[?&])options=/i);
+});
+
+test("search_path in URL-encoded PostgreSQL startup options is rejected", () => {
+  for (const url of [
+    "postgresql://db.example.com/app?options=-c%20search_path%3Dpublic",
+    "postgresql://db.example.com/app?options=--search_path%3Dpublic",
+    "postgresql://db.example.com/app?options=-c%20statement_timeout%3D8000&options=-c%20search_path%3Dpublic",
+  ]) {
+    assert.throws(
+      () => buildDatabaseConfig(url),
+      /must not set search_path through the options parameter/,
+    );
+  }
 });
 
 test("Render internal PostgreSQL requires a trusted CA for verified TLS", () => {
