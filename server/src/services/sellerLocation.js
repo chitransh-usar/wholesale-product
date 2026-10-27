@@ -72,6 +72,11 @@ const resolveCitySql = async (dbPool) => {
   const hasWarehouseCity = columns.has('warehouse_city');
   const hasLegacyCity = columns.has('city');
   const citySql = citySqlFor({ hasWarehouseCity, hasLegacyCity });
+  console.log("[seller-location resolver result]", {
+  hasWarehouseCity,
+  hasLegacyCity,
+  citySql
+});
 
   return {
     citySql,
