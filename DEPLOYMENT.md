@@ -10,6 +10,7 @@ run SQL, push Git commits, or deploy services.
 - [Neon migration audit](#neon-migration-audit)
 - [Reviewed migration order](#reviewed-migration-order)
 - [Run the migrations manually](#run-the-migrations-manually)
+- [Verify the Neon schema](#verify-the-neon-schema)
 - [Configure the backend host](#configure-the-backend-host)
 - [Configure Vercel](#configure-vercel)
 - [Smoke-test checklist](#smoke-test-checklist)
@@ -595,6 +596,43 @@ valid exact-prefix `schema_migrations` ledger and each pending data-changing
 migration has been reviewed for the target's existing rows. The command does
 not infer migration history from the presence of tables. Never create ledger
 rows by hand to make an existing schema appear migrated.
+
+Several included historical migrations contain conditional column
+replacement or cleanup of obsolete sequence rows. The migration runner does
+not drop tables, but these statements can discard column values or rows on a
+populated target. For this new Neon database, proceed only after confirming
+that it is genuinely empty and the baseline preflight accepts it. If there is
+any existing application data, partial migration history, or unexpected
+public-schema object, stop and review the pending migration effects before
+applying anything.
+
+## Verify the Neon schema
+
+Run the read-only verifier after migration. It derives the expected
+application table names from the 59 included SQL migrations, confirms the
+expected database and `public` schema, reports missing tables, and checks the
+migration ledger against the version-controlled filenames and checksums. It
+does not apply SQL and exits non-zero if tables are missing, migration history
+is absent or incomplete, or the connected target does not match.
+
+Set `DATABASE_URL` securely in the operator shell to the intended Neon
+application endpoint. A pooled Neon URL is supported. The verifier rejects
+`search_path` in URL startup options or `PGOPTIONS`; do not put the URL in
+command arguments, source files, or logs. Then run:
+
+```powershell
+Set-Location 'C:\Users\Chitransh Koshta\wholesale-product\server'
+npm.cmd run db:verify -- --database wholesale_marketplace
+```
+
+The current manifest declares 77 application tables, including `users`,
+`wholesaler_profiles`, `products`, and `supplier_inventory`. This verifier
+checks tables and migration history, not every column, constraint, index,
+trigger, function, extension, grant, or row. Use the read-only inventory in
+`server/inspect_full_schema.sql` for a broader catalog review. After it
+reports all 59 migrations recorded and no missing tables, test readiness,
+registration, login, the catalogue, and city filtering through the deployed
+service.
 
 If a source database contains data to preserve, do not run the fresh baseline
 plan over it. Back up both source and target, create an empty Neon database,

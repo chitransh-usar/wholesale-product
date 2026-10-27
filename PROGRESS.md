@@ -11,6 +11,29 @@ Newest first. Dates are when the work landed on `claude/wholesale-3.0`.
 
 ---
 
+## Adding read-only Neon schema verification, 26 October 2026
+
+- Added `npm run db:verify`, which derives the 77 expected application tables
+  from the included migration manifest, confirms the explicitly named
+  database and `public` schema, reports missing relations, and validates
+  applied migration checksums and pending migration names. It is read-only and
+  supports a pooled Neon application endpoint.
+- Added tests for manifest inventory, target mismatch, missing relations,
+  pending migration reporting, a complete schema/ledger result, and ensuring
+  no database writes are issued.
+- Documented the verifier after the existing guarded `migrate:neon` command.
+  No generic `db:migrate` alias was added because `migrate:neon` is already
+  the explicit guarded Neon apply command and `migrate` remains restricted to
+  the local test database.
+- Reconfirmed that some historical included migrations perform conditional
+  column replacement or clean up obsolete sequence rows. Documented that the
+  full initialization is appropriate only for a genuinely empty target that
+  passes the runner preflight.
+- The backend suite passed 85/85, the frontend production build passed, the
+  migration plan printed all 59 files without connecting, and syntax/whitespace
+  checks passed. Frontend lint still reports 40 errors and 5 warnings in
+  untouched files. No Neon or production database was contacted.
+
 ## Removing unsupported Neon pool startup option, 26 October 2026
 
 - The application pool configuration had been sending

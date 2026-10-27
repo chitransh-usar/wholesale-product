@@ -8,6 +8,7 @@
     "dev": "nodemon src/server.js",
     "migrate": "node run_migrations.js",
     "migrate:neon": "node scripts/migrate_neon.js",
+    "db:verify": "node scripts/verify_schema.js",
     "migrate:restore-wholesaler-profile": "node scripts/restore_wholesaler_profiles.js",
     "smoke": "node scripts/smoke.js"
   },
