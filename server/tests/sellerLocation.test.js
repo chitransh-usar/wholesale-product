@@ -37,6 +37,26 @@ test("seller location reads only optional city columns from public profiles", as
   assert.match(result.citySql, /wp\.city/);
 });
 
+test("seller location parses PostgreSQL array text for both city columns", async () => {
+  const result = await resolveCitySql({
+    async query() {
+      return {
+        rows: [{
+          profile_exists: true,
+          profile_columns: "{city,warehouse_city}",
+        }],
+      };
+    },
+  });
+
+  assert.equal(result.hasWarehouseCity, true);
+  assert.equal(result.hasLegacyCity, true);
+  assert.equal(
+    result.citySql.replace(/\s+/g, " ").trim(),
+    "COALESCE( NULLIF(btrim(wp.warehouse_city), ''), NULLIF(btrim(wp.city), '') )",
+  );
+});
+
 test("seller location supports older profiles without either city column", async () => {
   const result = await resolveCitySql({
     async query() {
@@ -48,6 +68,20 @@ test("seller location supports older profiles without either city column", async
   assert.equal(result.hasWarehouseCity, false);
   assert.equal(result.citySql, "NULL");
   assert.equal(citySqlFor({ hasLegacyCity: false, hasWarehouseCity: false }), "NULL");
+});
+
+test("seller location treats null, empty, and unexpected metadata as missing city columns", async () => {
+  for (const profileColumns of [null, [], "{}", "city,warehouse_city", "{region}"]) {
+    const result = await resolveCitySql({
+      async query() {
+        return { rows: [{ profile_exists: true, profile_columns: profileColumns }] };
+      },
+    });
+
+    assert.equal(result.hasLegacyCity, false, `profile_columns=${profileColumns}`);
+    assert.equal(result.hasWarehouseCity, false, `profile_columns=${profileColumns}`);
+    assert.equal(result.citySql, "NULL", `profile_columns=${profileColumns}`);
+  }
 });
 
 test("seller location generates valid expressions for either optional city column", async () => {

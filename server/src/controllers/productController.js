@@ -202,10 +202,6 @@ exports.addProduct = async (req, res) => {
 exports.getPublicCatalog = async (req, res) => {
   try {
     const { citySql, cityKeySql } = await resolveCitySql(pool);
-    console.log("[catalog-cities diagnostic]", {
-  citySql,
-  cityKeySql
-});
     // The filter sits in the WHERE, so it removes individual listings before
     // they are gathered up. That matters: filtering the product instead would
     // leave a Surat buyer looking at a product card whose suppliers, prices

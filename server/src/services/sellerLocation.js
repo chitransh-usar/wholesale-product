@@ -43,6 +43,26 @@ const CITY_SQL = citySqlFor({ hasWarehouseCity: true, hasLegacyCity: true });
 // The same, folded so two spellings of one city compare equal.
 const CITY_KEY_SQL = cityKeySqlFor(CITY_SQL);
 
+const normalizeProfileColumns = (profileColumns) => {
+  const allowedColumns = new Set(["warehouse_city", "city"]);
+  if (Array.isArray(profileColumns)) {
+    return profileColumns.filter(
+      (column) => typeof column === "string" && allowedColumns.has(column),
+    );
+  }
+
+  if (typeof profileColumns !== "string") return [];
+  const value = profileColumns.trim();
+  if (!value.startsWith("{") || !value.endsWith("}")) return [];
+  const contents = value.slice(1, -1).trim();
+  if (!contents) return [];
+
+  return contents
+    .split(",")
+    .map((column) => column.trim().replace(/^"(.*)"$/, "$1"))
+    .filter((column) => allowedColumns.has(column));
+};
+
 const resolveCitySql = async (dbPool) => {
   const result = await dbPool.query(`
     SELECT
@@ -64,19 +84,10 @@ const resolveCitySql = async (dbPool) => {
     throw error;
   }
 
-  const columns = new Set(profile.profile_columns || []);
-  console.log("[seller-location diagnostic]", {
-  profileExists: profile.profile_exists,
-  profileColumns: profile.profile_columns
-});
+  const columns = new Set(normalizeProfileColumns(profile.profile_columns));
   const hasWarehouseCity = columns.has('warehouse_city');
   const hasLegacyCity = columns.has('city');
   const citySql = citySqlFor({ hasWarehouseCity, hasLegacyCity });
-  console.log("[seller-location resolver result]", {
-  hasWarehouseCity,
-  hasLegacyCity,
-  citySql
-});
 
   return {
     citySql,

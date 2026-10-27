@@ -11,7 +11,12 @@ const controllerPath = path.join(
   "productController.js",
 );
 
-function loadController(pool, cityFilterFrom = () => null) {
+function loadController(
+  pool,
+  cityFilterFrom = () => null,
+  citySql = "NULL",
+  cityKeySql = "lower(NULL)",
+) {
   delete require.cache[controllerPath];
   const originalLoad = Module._load;
   Module._load = function (request, parent, isMain) {
@@ -29,7 +34,7 @@ function loadController(pool, cityFilterFrom = () => null) {
         return {
           resolveCitySql: async (dbPool) => {
             await dbPool.query("SELECT column_name FROM information_schema.columns");
-            return { citySql: "NULL", cityKeySql: "lower(NULL)" };
+            return { citySql, cityKeySql };
           },
           cityFilterFrom,
         };
@@ -44,6 +49,36 @@ function loadController(pool, cityFilterFrom = () => null) {
     Module._load = originalLoad;
   }
 }
+
+test("catalogue cities uses the resolved city expression in its aggregate query", async () => {
+  const calls = [];
+  const citySql = `COALESCE(
+    NULLIF(btrim(wp.warehouse_city), ''),
+    NULLIF(btrim(wp.city), '')
+  )`;
+  const cityKeySql = `lower(regexp_replace(btrim(${citySql}), '\\s+', ' ', 'g'))`;
+  const controller = loadController(
+    {
+      async query(sql) {
+        calls.push(sql);
+        return { rows: [] };
+      },
+    },
+    () => null,
+    citySql,
+    cityKeySql,
+  );
+  const response = makeResponse();
+
+  await controller.getCatalogCities({ query: {} }, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.body, []);
+  assert.equal(calls.length, 2);
+  assert.match(calls[1], /COALESCE\([\s\S]*wp\.warehouse_city[\s\S]*wp\.city/);
+  assert.match(calls[1], /mode\(\) WITHIN GROUP \(ORDER BY COALESCE/);
+  assert.match(calls[1], /AND COALESCE\([\s\S]*\) IS NOT NULL/);
+});
 
 function makeResponse() {
   return {
