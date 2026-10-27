@@ -65,6 +65,10 @@ const resolveCitySql = async (dbPool) => {
   }
 
   const columns = new Set(profile.profile_columns || []);
+  console.log("[seller-location diagnostic]", {
+  profileExists: profile.profile_exists,
+  profileColumns: profile.profile_columns
+});
   const hasWarehouseCity = columns.has('warehouse_city');
   const hasLegacyCity = columns.has('city');
   const citySql = citySqlFor({ hasWarehouseCity, hasLegacyCity });
